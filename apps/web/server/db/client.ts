@@ -38,5 +38,7 @@ export function getDbSync(dbName?: string): Db {
 
 export async function getDb(dbName?: string): Promise<Db> {
   await getMongoClientPromise()
+  const { ensureMongoIndexes } = await import("@/server/db/indexes")
+  void ensureMongoIndexes()
   return getDbSync(dbName)
 }
