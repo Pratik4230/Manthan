@@ -7,7 +7,22 @@ function required(name: string): string {
 }
 
 export const env = {
+  get betterAuthSecret() {
+    return required("BETTER_AUTH_SECRET")
+  },
+  get betterAuthUrl() {
+    return required("BETTER_AUTH_URL")
+  },
+  get emailFrom() {
+    return process.env.EMAIL_FROM?.trim() || "Manthan <noreply@aixpense.in>"
+  },
   get mongoUri() {
     return required("MONGO_URI")
+  },
+  get nextPublicAppUrl() {
+    return required("NEXT_PUBLIC_APP_URL")
+  },
+  get resendApiKey() {
+    return required("RESEND_API_KEY")
   },
 }

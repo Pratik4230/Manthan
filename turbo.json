@@ -1,6 +1,17 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "ui": "tui",
+  "globalEnv": [
+    "BETTER_AUTH_SECRET",
+    "BETTER_AUTH_URL",
+    "EMAIL_FROM",
+    "INNGEST_DEV",
+    "INNGEST_EVENT_KEY",
+    "INNGEST_SIGNING_KEY",
+    "MONGO_URI",
+    "NEXT_PUBLIC_APP_URL",
+    "RESEND_API_KEY"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
