@@ -10,6 +10,7 @@ import { useDataStreamRuntime } from "@assistant-ui/react-data-stream"
 import { useMemo } from "react"
 
 import { Thread } from "@/components/assistant-ui/thread"
+import { CitationsDataUI } from "@/features/chat/components/citation-chips"
 import { createWorkspaceThreadListAdapter } from "@/features/chat/thread-list-adapter"
 import { Button } from "@workspace/ui/components/button"
 
@@ -63,6 +64,7 @@ export function ChatPane({ workspaceId }: { workspaceId: string }) {
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
+      <CitationsDataUI />
       <div className="flex h-full min-h-0 flex-col">
         <ChatToolbar />
         <div className="min-h-0 flex-1">

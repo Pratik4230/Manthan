@@ -1,6 +1,14 @@
 import type { WorkspaceDto } from "@/server/workspaces/service"
 
 async function parseJson<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get("content-type") ?? ""
+  if (!contentType.includes("application/json")) {
+    throw new Error(
+      response.ok
+        ? "Unexpected non-JSON response"
+        : `Request failed (${response.status})`
+    )
+  }
   const data = (await response.json()) as T & { error?: string }
   if (!response.ok) {
     throw new Error(data.error ?? "Request failed")

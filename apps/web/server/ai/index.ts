@@ -1,4 +1,9 @@
 export {
+  CITATIONS_DATA_NAME,
+  enrichCitations,
+  type CitationPayload,
+} from "@/server/ai/citations"
+export {
   createWorkspaceRagGraph,
   workspaceRagGraph,
   WorkspaceRagState,

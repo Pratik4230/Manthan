@@ -2,7 +2,14 @@ import { AIMessage, HumanMessage } from "@langchain/core/messages"
 import { createAssistantStreamResponse } from "assistant-stream"
 import { NextResponse } from "next/server"
 
-import { workspaceRagGraph } from "@/server/ai/graph"
+import {
+  CITATIONS_DATA_NAME,
+  enrichCitations,
+} from "@/server/ai/citations"
+import {
+  workspaceRagGraph,
+  type RagCitation,
+} from "@/server/ai/graph"
 import { requireSession } from "@/server/auth/session"
 import { getWorkspace } from "@/server/workspaces/service"
 
@@ -69,6 +76,7 @@ export async function POST(request: Request, context: RouteContext) {
 
     return createAssistantStreamResponse(async (controller) => {
       let streamed = false
+      let citations: RagCitation[] = []
 
       const events = workspaceRagGraph.streamEvents(
         {
@@ -99,13 +107,38 @@ export async function POST(request: Request, context: RouteContext) {
           event.metadata?.langgraph_node === "generate"
         ) {
           const output = event.data?.output as
-            { messages?: unknown[] } | undefined
+            | { messages?: unknown[] }
+            | undefined
           const last = output?.messages?.at(-1)
           if (last && AIMessage.isInstance(last) && last.text) {
             streamed = true
             controller.appendText(last.text)
           }
+          continue
         }
+
+        if (
+          event.event === "on_chain_end" &&
+          event.metadata?.langgraph_node === "cite"
+        ) {
+          const output = event.data?.output as
+            | { citations?: RagCitation[] }
+            | undefined
+          citations = output?.citations ?? []
+        }
+      }
+
+      if (citations.length > 0) {
+        const payload = await enrichCitations(
+          session.user.id,
+          workspaceId,
+          citations
+        )
+        controller.appendData({
+          type: "data",
+          name: CITATIONS_DATA_NAME,
+          data: JSON.parse(JSON.stringify(payload)),
+        })
       }
     })
   } catch (error) {
