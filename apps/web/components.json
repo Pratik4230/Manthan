@@ -17,6 +17,9 @@
     "utils": "@workspace/ui/lib/utils",
     "ui": "@workspace/ui/components"
   },
+  "registries": {
+    "@assistant-ui": "https://r.assistant-ui.com/styles/{style}/{name}.json"
+  },
   "rtl": false,
   "menuColor": "default",
   "menuAccent": "subtle"

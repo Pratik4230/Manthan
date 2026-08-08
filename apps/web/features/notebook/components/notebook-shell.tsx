@@ -43,7 +43,9 @@ export function NotebookShell({
           <div className="border-b px-4 py-3">
             <h2 className="text-sm font-medium">Chat</h2>
           </div>
-          <div className="h-full overflow-y-auto p-4">{chat}</div>
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
+            {chat}
+          </div>
         </section>
         <section className="min-h-0 lg:col-span-3">
           <div className="border-b px-4 py-3">
