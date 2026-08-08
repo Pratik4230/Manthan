@@ -25,6 +25,7 @@ export type SourceDocument = {
   imageKitFileId: string | null
   imageKitUrl: string | null
   url: string | null
+  extractedText: string | null
   createdAt: Date
   updatedAt: Date
 }

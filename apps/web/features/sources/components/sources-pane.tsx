@@ -1,5 +1,6 @@
 "use client"
 
+import { useForm } from "@tanstack/react-form"
 import { upload } from "@imagekit/next"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
@@ -13,11 +14,24 @@ import {
 } from "@/features/sources/file-types"
 import {
   useCreateFileSource,
+  useCreateWebSource,
+  useCreateYoutubeSource,
   useDeleteSource,
   useSources,
 } from "@/features/sources/hooks"
+import {
+  addWebSourceSchema,
+  addYoutubeSourceSchema,
+} from "@/features/sources/schemas"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Field,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+} from "@workspace/ui/components/field"
+import { Input } from "@workspace/ui/components/input"
 import { Progress } from "@workspace/ui/components/progress"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
@@ -38,13 +52,60 @@ function statusVariant(
   return "outline"
 }
 
+function sourceSubtitle(source: {
+  type: string
+  fileName: string | null
+  url: string | null
+}) {
+  if (source.type === "file") {
+    return source.fileName
+  }
+  return source.url
+}
+
 export function SourcesPane({ workspaceId }: { workspaceId: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [progress, setProgress] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
   const { data, isLoading, isError, error, refetch } = useSources(workspaceId)
   const createSource = useCreateFileSource(workspaceId)
+  const createWebSource = useCreateWebSource(workspaceId)
+  const createYoutubeSource = useCreateYoutubeSource(workspaceId)
   const deleteSource = useDeleteSource(workspaceId)
+
+  const webForm = useForm({
+    defaultValues: { url: "" },
+    validators: {
+      onSubmit: addWebSourceSchema,
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        await createWebSource.mutateAsync({ url: value.url })
+        toast.success("Web page added")
+        webForm.reset()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Failed to add URL")
+      }
+    },
+  })
+
+  const youtubeForm = useForm({
+    defaultValues: { url: "" },
+    validators: {
+      onSubmit: addYoutubeSourceSchema,
+    },
+    onSubmit: async ({ value }) => {
+      try {
+        await createYoutubeSource.mutateAsync({ url: value.url })
+        toast.success("YouTube video added")
+        youtubeForm.reset()
+      } catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : "Failed to add YouTube URL"
+        )
+      }
+    },
+  })
 
   async function handleFiles(files: FileList | null) {
     const file = files?.item(0)
@@ -137,6 +198,94 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
         ) : null}
       </div>
 
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          void webForm.handleSubmit()
+        }}
+      >
+        <FieldGroup>
+          <webForm.Field name="url">
+            {(field) => {
+              const isInvalid =
+                field.state.meta.isTouched && !field.state.meta.isValid
+              return (
+                <Field data-invalid={isInvalid}>
+                  <FieldLabel htmlFor="web-url">Web URL</FieldLabel>
+                  <Input
+                    id="web-url"
+                    name={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="https://example.com/article"
+                    disabled={createWebSource.isPending}
+                    aria-invalid={isInvalid}
+                  />
+                  {isInvalid ? (
+                    <FieldError errors={field.state.meta.errors} />
+                  ) : null}
+                </Field>
+              )
+            }}
+          </webForm.Field>
+        </FieldGroup>
+        <Button
+          type="submit"
+          variant="outline"
+          className="w-full"
+          disabled={createWebSource.isPending}
+        >
+          {createWebSource.isPending ? "Adding…" : "Add web page"}
+        </Button>
+      </form>
+
+      <form
+        className="space-y-2"
+        onSubmit={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          void youtubeForm.handleSubmit()
+        }}
+      >
+        <FieldGroup>
+          <youtubeForm.Field name="url">
+            {(field) => {
+              const isInvalid =
+                field.state.meta.isTouched && !field.state.meta.isValid
+              return (
+                <Field data-invalid={isInvalid}>
+                  <FieldLabel htmlFor="youtube-url">YouTube URL</FieldLabel>
+                  <Input
+                    id="youtube-url"
+                    name={field.name}
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=…"
+                    disabled={createYoutubeSource.isPending}
+                    aria-invalid={isInvalid}
+                  />
+                  {isInvalid ? (
+                    <FieldError errors={field.state.meta.errors} />
+                  ) : null}
+                </Field>
+              )
+            }}
+          </youtubeForm.Field>
+        </FieldGroup>
+        <Button
+          type="submit"
+          variant="outline"
+          className="w-full"
+          disabled={createYoutubeSource.isPending}
+        >
+          {createYoutubeSource.isPending ? "Adding…" : "Add YouTube video"}
+        </Button>
+      </form>
+
       {isLoading ? (
         <div className="space-y-2">
           <Skeleton className="h-14 w-full" />
@@ -157,21 +306,19 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
 
       {!isLoading && !isError && data?.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No sources yet. Upload a document to get started.
+          No sources yet. Upload a file, add a web page, or paste a YouTube
+          link.
         </p>
       ) : null}
 
       <ul className="space-y-2">
         {data?.map((source) => (
-          <li
-            key={source.id}
-            className="rounded-xl border p-3"
-          >
+          <li key={source.id} className="rounded-xl border p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 space-y-1">
                 <p className="truncate text-sm font-medium">{source.title}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {source.fileName}
+                  {sourceSubtitle(source)}
                 </p>
                 <Badge variant={statusVariant(source.status)}>
                   {statusLabel(source.status)}

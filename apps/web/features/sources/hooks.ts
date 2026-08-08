@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 
 import {
   createFileSourceRequest,
+  createWebSourceRequest,
+  createYoutubeSourceRequest,
   deleteSourceRequest,
   fetchSources,
 } from "@/features/sources/api"
@@ -40,6 +42,34 @@ export function useCreateFileSource(workspaceId: string) {
     mutationFn: (
       input: Parameters<typeof createFileSourceRequest>[1]
     ) => createFileSourceRequest(workspaceId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceKeys.list(workspaceId),
+      })
+    },
+  })
+}
+
+export function useCreateWebSource(workspaceId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createWebSourceRequest>[1]) =>
+      createWebSourceRequest(workspaceId, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceKeys.list(workspaceId),
+      })
+    },
+  })
+}
+
+export function useCreateYoutubeSource(workspaceId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: Parameters<typeof createYoutubeSourceRequest>[1]) =>
+      createYoutubeSourceRequest(workspaceId, input),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: sourceKeys.list(workspaceId),

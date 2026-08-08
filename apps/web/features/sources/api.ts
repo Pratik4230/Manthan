@@ -46,6 +46,34 @@ export async function createFileSourceRequest(
   return data.source
 }
 
+export async function createWebSourceRequest(
+  workspaceId: string,
+  input: { url: string; title?: string }
+): Promise<SourceDto> {
+  const data = await parseJson<{ source: SourceDto }>(
+    await fetch(`/api/workspaces/${workspaceId}/sources/web`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  )
+  return data.source
+}
+
+export async function createYoutubeSourceRequest(
+  workspaceId: string,
+  input: { url: string; title?: string }
+): Promise<SourceDto> {
+  const data = await parseJson<{ source: SourceDto }>(
+    await fetch(`/api/workspaces/${workspaceId}/sources/youtube`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    })
+  )
+  return data.source
+}
+
 export async function deleteSourceRequest(
   workspaceId: string,
   sourceId: string

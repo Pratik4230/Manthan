@@ -1,5 +1,7 @@
 export {
   createFileSourceRequest,
+  createWebSourceRequest,
+  createYoutubeSourceRequest,
   deleteSourceRequest,
   fetchSources,
   fetchUploadAuth,
@@ -7,6 +9,8 @@ export {
 export { SourcesPane } from "@/features/sources/components/sources-pane"
 export {
   useCreateFileSource,
+  useCreateWebSource,
+  useCreateYoutubeSource,
   useDeleteSource,
   useSources,
   sourceKeys,

@@ -16,6 +16,9 @@ export const env = {
   get emailFrom() {
     return process.env.EMAIL_FROM?.trim() || "Manthan <noreply@aixpense.in>"
   },
+  get firecrawlApiKey() {
+    return required("FIRECRAWL_API_KEY")
+  },
   get imagekitPrivateKey() {
     return required("IMAGEKIT_PRIVATE_KEY")
   },
