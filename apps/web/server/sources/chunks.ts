@@ -8,7 +8,7 @@ export type ChunkDocument = {
   text: string
   embedding?: number[]
   loc?: Record<string, unknown>
-  createdAt: Date
+  createdAt?: Date
 }
 
 export async function getChunksCollection(): Promise<Collection<ChunkDocument>> {

@@ -2,7 +2,7 @@ import { ObjectId } from "mongodb"
 
 import { inngest } from "@/server/inngest/client"
 import type { Source } from "@/server/models/source"
-import { getChunksCollection } from "@/server/sources/chunks"
+import { deleteSourceChunks } from "@/server/ingest/embed"
 import { getSourcesCollection } from "@/server/sources/collection"
 import type {
   CreateFileSourceInput,
@@ -309,8 +309,7 @@ export async function deleteSource(
     }
   }
 
-  const chunks = await getChunksCollection()
-  await chunks.deleteMany({ sourceId, workspaceId })
+  await deleteSourceChunks(workspaceId, sourceId)
 
   const result = await collection.deleteOne({
     _id: new ObjectId(sourceId),

@@ -2,7 +2,7 @@ import { ObjectId } from "mongodb"
 
 import { getSourcesCollection } from "@/server/sources/collection"
 
-export async function finalizeExtractedSource(
+export async function saveExtractedText(
   sourceId: string,
   text: string
 ): Promise<void> {
@@ -21,8 +21,6 @@ export async function finalizeExtractedSource(
     {
       $set: {
         extractedText: trimmed,
-        status: "ready",
-        error: null,
         updatedAt: new Date(),
       },
     }
@@ -31,4 +29,23 @@ export async function finalizeExtractedSource(
   if (result.matchedCount === 0) {
     throw new Error("Source not found")
   }
+}
+
+export async function finalizeExtractedSource(
+  sourceId: string,
+  text: string
+): Promise<void> {
+  await saveExtractedText(sourceId, text)
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: {
+        status: "ready",
+        error: null,
+        updatedAt: new Date(),
+      },
+    }
+  )
 }
