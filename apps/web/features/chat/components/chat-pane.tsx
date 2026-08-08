@@ -12,6 +12,8 @@ import { ThreadList } from "@/components/assistant-ui/thread-list"
 import { CitationsDataUI } from "@/features/chat/components/citation-chips"
 import { createWorkspaceThreadListAdapter } from "@/features/chat/thread-list-adapter"
 import { useSources } from "@/features/sources/hooks"
+import { Button } from "@workspace/ui/components/button"
+import { Skeleton } from "@workspace/ui/components/skeleton"
 
 function useWorkspaceDataStreamRuntime(workspaceId: string) {
   return useDataStreamRuntime({
@@ -67,13 +69,36 @@ export function ChatPane({ workspaceId }: { workspaceId: string }) {
             Conversations
           </p>
           <div className="min-h-0 flex-1 overflow-y-auto">
-            <ThreadList />
+            {showChat ? (
+              <ThreadList />
+            ) : (
+              <p className="px-2.5 text-xs text-muted-foreground">
+                Conversations unlock once a source is ready.
+              </p>
+            )}
           </div>
         </aside>
         <div className="min-h-0 min-w-0 flex-1">
           {sourcesQuery.isLoading ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Loading sources…
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6">
+              <Skeleton className="h-4 w-40" />
+              <Skeleton className="h-24 w-full max-w-md" />
+              <p className="text-sm text-muted-foreground">Loading sources…</p>
+            </div>
+          ) : sourcesQuery.isError ? (
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+              <p className="text-base font-medium">Could not load sources</p>
+              <p className="max-w-sm text-sm text-muted-foreground">
+                {sourcesQuery.error instanceof Error
+                  ? sourcesQuery.error.message
+                  : "Something went wrong"}
+              </p>
+              <Button
+                variant="outline"
+                onClick={() => void sourcesQuery.refetch()}
+              >
+                Retry
+              </Button>
             </div>
           ) : showChat ? (
             <Thread />

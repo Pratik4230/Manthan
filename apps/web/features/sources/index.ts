@@ -5,6 +5,7 @@ export {
   deleteSourceRequest,
   fetchSources,
   fetchUploadAuth,
+  retrySourceRequest,
 } from "@/features/sources/api"
 export { SourcesPane } from "@/features/sources/components/sources-pane"
 export {
@@ -12,6 +13,7 @@ export {
   useCreateWebSource,
   useCreateYoutubeSource,
   useDeleteSource,
+  useRetrySource,
   useSources,
   sourceKeys,
 } from "@/features/sources/hooks"

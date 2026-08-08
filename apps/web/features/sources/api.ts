@@ -92,3 +92,15 @@ export async function deleteSourceRequest(
     })
   )
 }
+
+export async function retrySourceRequest(
+  workspaceId: string,
+  sourceId: string
+): Promise<SourceDto> {
+  const data = await parseJson<{ source: SourceDto }>(
+    await fetch(`/api/workspaces/${workspaceId}/sources/${sourceId}`, {
+      method: "POST",
+    })
+  )
+  return data.source
+}

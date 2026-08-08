@@ -4,6 +4,7 @@ export type WorkspaceDocument = {
   ownerId: string
   title: string
   instructions: string
+  summary: string | null
   createdAt: Date
   updatedAt: Date
   deletedAt: Date | null

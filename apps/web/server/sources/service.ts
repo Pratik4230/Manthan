@@ -31,6 +31,7 @@ export type SourceDto = {
   imageKitFileId: string | null
   imageKitUrl: string | null
   url: string | null
+  summary: string | null
   createdAt: string
   updatedAt: string
 }
@@ -51,6 +52,7 @@ function toDto(source: Source): SourceDto {
     imageKitFileId: source.imageKitFileId,
     imageKitUrl: source.imageKitUrl,
     url: source.url,
+    summary: source.summary ?? null,
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
   }
@@ -95,6 +97,7 @@ export async function createFileSource(
     imageKitUrl: input.imageKitUrl,
     url: null,
     extractedText: null,
+    summary: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -159,6 +162,7 @@ export async function createWebSource(
     imageKitUrl: null,
     url: normalizedUrl,
     extractedText: null,
+    summary: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -222,6 +226,7 @@ export async function createYoutubeSource(
     imageKitUrl: null,
     url: normalizedUrl,
     extractedText: null,
+    summary: null,
     createdAt: now,
     updatedAt: now,
   }
@@ -366,4 +371,87 @@ export async function setSourceStatus(
       },
     }
   )
+}
+
+export async function setSourceReady(
+  sourceId: string,
+  summary: string | null
+) {
+  if (!ObjectId.isValid(sourceId)) {
+    return
+  }
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: {
+        status: "ready",
+        error: null,
+        summary,
+        updatedAt: new Date(),
+      },
+    }
+  )
+}
+
+export async function retrySourceIngest(
+  ownerId: string,
+  workspaceId: string,
+  sourceId: string
+): Promise<SourceDto | null> {
+  if (!ObjectId.isValid(sourceId)) {
+    return null
+  }
+
+  const workspace = await assertWorkspaceOwner(ownerId, workspaceId)
+  if (!workspace) {
+    return null
+  }
+
+  const collection = await getSourcesCollection()
+  const source = await collection.findOne({
+    _id: new ObjectId(sourceId),
+    workspaceId,
+    ownerId,
+  })
+
+  if (!source) {
+    return null
+  }
+
+  if (source.status === "processing" || source.status === "pending") {
+    throw new Response(
+      JSON.stringify({ error: "Source ingest is already in progress" }),
+      {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }
+    )
+  }
+
+  const now = new Date()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId), workspaceId, ownerId },
+    {
+      $set: {
+        status: "pending",
+        error: null,
+        updatedAt: now,
+      },
+    }
+  )
+
+  await inngest.send({
+    name: "source/ingest.requested",
+    data: {
+      sourceId,
+      workspaceId,
+      ownerId,
+      sourceType: source.type,
+    },
+  })
+
+  const updated = await collection.findOne({ _id: new ObjectId(sourceId) })
+  return updated ? toDto(updated as Source) : null
 }

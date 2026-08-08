@@ -6,13 +6,20 @@ import {
   extensionFromMimeType,
   parseFileBuffer,
 } from "@/server/ingest/parse"
+import {
+  generateSourceSummary,
+  refreshWorkspaceSummary,
+} from "@/server/ingest/summarize"
 import { scrapeWebPage } from "@/server/integrations/firecrawl"
 import { downloadImageKitFile } from "@/server/integrations/imagekit"
 import { fetchYoutubeTranscriptText } from "@/server/integrations/youtube"
 import type { Source } from "@/server/models/source"
-import { getSourceById, setSourceStatus } from "@/server/sources/service"
+import { getSourceById, setSourceReady } from "@/server/sources/service"
 
-async function ingestFileSource(source: Source): Promise<number> {
+async function ingestFileSource(source: Source): Promise<{
+  chunkCount: number
+  text: string
+}> {
   if (!source.imageKitUrl) {
     throw new Error("Source file URL missing")
   }
@@ -34,10 +41,13 @@ async function ingestFileSource(source: Source): Promise<number> {
     sourceId: source._id.toHexString(),
     chunks,
   })
-  return result.count
+  return { chunkCount: result.count, text: parsed.text }
 }
 
-async function ingestWebSource(source: Source): Promise<number> {
+async function ingestWebSource(source: Source): Promise<{
+  chunkCount: number
+  text: string
+}> {
   if (!source.url) {
     throw new Error("Source URL missing")
   }
@@ -50,10 +60,13 @@ async function ingestWebSource(source: Source): Promise<number> {
     sourceId: source._id.toHexString(),
     chunks,
   })
-  return result.count
+  return { chunkCount: result.count, text }
 }
 
-async function ingestYoutubeSource(source: Source): Promise<number> {
+async function ingestYoutubeSource(source: Source): Promise<{
+  chunkCount: number
+  text: string
+}> {
   if (!source.url) {
     throw new Error("Source URL missing")
   }
@@ -66,12 +79,13 @@ async function ingestYoutubeSource(source: Source): Promise<number> {
     sourceId: source._id.toHexString(),
     chunks,
   })
-  return result.count
+  return { chunkCount: result.count, text }
 }
 
 export async function runSourceIngest(sourceId: string): Promise<{
   chunkCount: number
   sourceType: Source["type"]
+  summary: string | null
 }> {
   const source = await getSourceById(sourceId)
   if (!source) {
@@ -79,17 +93,37 @@ export async function runSourceIngest(sourceId: string): Promise<{
   }
 
   let chunkCount = 0
+  let text = ""
   if (source.type === "file") {
-    chunkCount = await ingestFileSource(source)
+    const result = await ingestFileSource(source)
+    chunkCount = result.chunkCount
+    text = result.text
   } else if (source.type === "web") {
-    chunkCount = await ingestWebSource(source)
+    const result = await ingestWebSource(source)
+    chunkCount = result.chunkCount
+    text = result.text
   } else if (source.type === "youtube") {
-    chunkCount = await ingestYoutubeSource(source)
+    const result = await ingestYoutubeSource(source)
+    chunkCount = result.chunkCount
+    text = result.text
   } else {
     throw new Error(`Unsupported source type: ${source.type}`)
   }
 
-  await setSourceStatus(sourceId, "ready")
+  let summary: string | null = null
+  try {
+    summary = await generateSourceSummary(source.title, text)
+  } catch {
+    summary = null
+  }
 
-  return { chunkCount, sourceType: source.type }
+  await setSourceReady(sourceId, summary)
+
+  try {
+    await refreshWorkspaceSummary(source.workspaceId, source.ownerId)
+  } catch {
+    void 0
+  }
+
+  return { chunkCount, sourceType: source.type, summary }
 }

@@ -8,6 +8,8 @@ export {
   getSourceById,
   listEnabledReadySourceIds,
   listSources,
+  retrySourceIngest,
+  setSourceReady,
   setSourceStatus,
   type SourceDto,
 } from "@/server/sources/service"

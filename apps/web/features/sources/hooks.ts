@@ -8,6 +8,7 @@ import {
   createYoutubeSourceRequest,
   deleteSourceRequest,
   fetchSources,
+  retrySourceRequest,
 } from "@/features/sources/api"
 
 export const sourceKeys = {
@@ -84,6 +85,20 @@ export function useDeleteSource(workspaceId: string) {
   return useMutation({
     mutationFn: (sourceId: string) =>
       deleteSourceRequest(workspaceId, sourceId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({
+        queryKey: sourceKeys.list(workspaceId),
+      })
+    },
+  })
+}
+
+export function useRetrySource(workspaceId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (sourceId: string) =>
+      retrySourceRequest(workspaceId, sourceId),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: sourceKeys.list(workspaceId),

@@ -12,6 +12,7 @@ export type WorkspaceDto = {
   ownerId: string
   title: string
   instructions: string
+  summary: string | null
   createdAt: string
   updatedAt: string
 }
@@ -22,6 +23,7 @@ function toDto(workspace: Workspace): WorkspaceDto {
     ownerId: workspace.ownerId,
     title: workspace.title,
     instructions: workspace.instructions,
+    summary: workspace.summary ?? null,
     createdAt: workspace.createdAt.toISOString(),
     updatedAt: workspace.updatedAt.toISOString(),
   }
@@ -38,6 +40,7 @@ export async function createWorkspace(
     ownerId,
     title: input.title,
     instructions: input.instructions ?? "",
+    summary: null,
     createdAt: now,
     updatedAt: now,
     deletedAt: null,

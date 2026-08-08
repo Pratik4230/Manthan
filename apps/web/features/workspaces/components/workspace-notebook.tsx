@@ -3,11 +3,13 @@
 import { ChatPane } from "@/features/chat"
 import { NotebookShell } from "@/features/notebook"
 import { SourcesPane } from "@/features/sources"
+import { StudioPane } from "@/features/studio"
 import { useWorkspace } from "@/features/workspaces/hooks"
+import { Button } from "@workspace/ui/components/button"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 export function WorkspaceNotebook({ workspaceId }: { workspaceId: string }) {
-  const { data, isLoading, isError, error } = useWorkspace(workspaceId)
+  const { data, isLoading, isError, error, refetch } = useWorkspace(workspaceId)
 
   if (isLoading) {
     return (
@@ -20,11 +22,14 @@ export function WorkspaceNotebook({ workspaceId }: { workspaceId: string }) {
 
   if (isError || !data) {
     return (
-      <div className="p-6">
+      <div className="space-y-3 p-6">
         <h1 className="text-xl font-semibold">Workspace unavailable</h1>
         <p className="text-muted-foreground">
           {error instanceof Error ? error.message : "Workspace not found"}
         </p>
+        <Button variant="outline" onClick={() => void refetch()}>
+          Retry
+        </Button>
       </div>
     )
   }
@@ -34,11 +39,7 @@ export function WorkspaceNotebook({ workspaceId }: { workspaceId: string }) {
       title={data.title}
       sources={<SourcesPane workspaceId={data.id} />}
       chat={<ChatPane workspaceId={data.id} />}
-      studio={
-        <p className="text-sm text-muted-foreground">
-          Study guides, quizzes, and other outputs will appear here later.
-        </p>
-      }
+      studio={<StudioPane workspaceId={data.id} />}
     />
   )
 }

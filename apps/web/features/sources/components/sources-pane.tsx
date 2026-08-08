@@ -18,6 +18,7 @@ import {
   useCreateWebSource,
   useCreateYoutubeSource,
   useDeleteSource,
+  useRetrySource,
   useSources,
 } from "@/features/sources/hooks"
 import {
@@ -323,6 +324,7 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
 export function SourcesPane({ workspaceId }: { workspaceId: string }) {
   const { data, isLoading, isError, error, refetch } = useSources(workspaceId)
   const deleteSource = useDeleteSource(workspaceId)
+  const retrySource = useRetrySource(workspaceId)
 
   return (
     <div className="flex h-full flex-col gap-2">
@@ -353,47 +355,86 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       <ul className="space-y-1.5">
-        {data?.map((source) => (
-          <li key={source.id} className="rounded-lg border p-2">
-            <div className="space-y-1.5">
-              <p className="truncate text-xs font-medium leading-snug">
-                {source.title}
-              </p>
-              <Badge
-                variant={statusVariant(source.status)}
-                className="text-[10px]"
-              >
-                {statusLabel(source.status)}
-              </Badge>
-              {source.error ? (
-                <p className="text-[10px] text-destructive">{source.error}</p>
-              ) : null}
-              <p className="truncate text-[10px] text-muted-foreground">
-                {sourceSubtitle(source)}
-              </p>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-full px-2 text-xs"
-                disabled={deleteSource.isPending}
-                onClick={() => {
-                  void deleteSource
-                    .mutateAsync(source.id)
-                    .then(() => toast.success("Source removed"))
-                    .catch((err: unknown) =>
-                      toast.error(
-                        err instanceof Error
-                          ? err.message
-                          : "Failed to delete source"
-                      )
-                    )
-                }}
-              >
-                Remove
-              </Button>
-            </div>
-          </li>
-        ))}
+        {data?.map((source) => {
+          const canRetry =
+            source.status === "failed" || source.status === "ready"
+          return (
+            <li key={source.id} className="rounded-lg border p-2">
+              <div className="space-y-1.5">
+                <p className="truncate text-xs font-medium leading-snug">
+                  {source.title}
+                </p>
+                <Badge
+                  variant={statusVariant(source.status)}
+                  className="text-[10px]"
+                >
+                  {statusLabel(source.status)}
+                </Badge>
+                {source.error ? (
+                  <p className="text-[10px] text-destructive">{source.error}</p>
+                ) : null}
+                {source.summary ? (
+                  <p className="line-clamp-3 text-[10px] leading-snug text-muted-foreground">
+                    {source.summary}
+                  </p>
+                ) : null}
+                <p className="truncate text-[10px] text-muted-foreground">
+                  {sourceSubtitle(source)}
+                </p>
+                <div className="flex flex-col gap-1">
+                  {canRetry ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 w-full px-2 text-xs"
+                      disabled={retrySource.isPending}
+                      onClick={() => {
+                        void retrySource
+                          .mutateAsync(source.id)
+                          .then(() =>
+                            toast.success(
+                              source.status === "failed"
+                                ? "Retry queued"
+                                : "Re-index queued"
+                            )
+                          )
+                          .catch((err: unknown) =>
+                            toast.error(
+                              err instanceof Error
+                                ? err.message
+                                : "Failed to retry ingest"
+                            )
+                          )
+                      }}
+                    >
+                      {source.status === "failed" ? "Retry" : "Re-index"}
+                    </Button>
+                  ) : null}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-full px-2 text-xs"
+                    disabled={deleteSource.isPending}
+                    onClick={() => {
+                      void deleteSource
+                        .mutateAsync(source.id)
+                        .then(() => toast.success("Source removed"))
+                        .catch((err: unknown) =>
+                          toast.error(
+                            err instanceof Error
+                              ? err.message
+                              : "Failed to delete source"
+                          )
+                        )
+                    }}
+                  >
+                    Remove
+                  </Button>
+                </div>
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </div>
   )
