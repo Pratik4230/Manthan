@@ -34,6 +34,9 @@ export const env = {
   get nextPublicAppUrl() {
     return required("NEXT_PUBLIC_APP_URL")
   },
+  get openaiApiKey() {
+    return required("OPENAI_API_KEY")
+  },
   get resendApiKey() {
     return required("RESEND_API_KEY")
   },
