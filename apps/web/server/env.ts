@@ -16,6 +16,15 @@ export const env = {
   get emailFrom() {
     return process.env.EMAIL_FROM?.trim() || "Manthan <noreply@aixpense.in>"
   },
+  get imagekitPrivateKey() {
+    return required("IMAGEKIT_PRIVATE_KEY")
+  },
+  get imagekitPublicKey() {
+    return required("IMAGEKIT_PUBLIC_KEY")
+  },
+  get imagekitUrlEndpoint() {
+    return required("IMAGEKIT_URL_ENDPOINT")
+  },
   get mongoUri() {
     return required("MONGO_URI")
   },

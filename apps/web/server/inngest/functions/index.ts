@@ -1,3 +1,5 @@
 import type { InngestFunction } from "inngest"
 
-export const functions: InngestFunction.Any[] = []
+import { ingestSource } from "@/server/inngest/functions/ingest-source"
+
+export const functions: InngestFunction.Any[] = [ingestSource]

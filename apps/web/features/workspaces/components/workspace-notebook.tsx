@@ -1,6 +1,7 @@
 "use client"
 
 import { NotebookShell } from "@/features/notebook"
+import { SourcesPane } from "@/features/sources"
 import { useWorkspace } from "@/features/workspaces/hooks"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
@@ -31,12 +32,7 @@ export function WorkspaceNotebook({ workspaceId }: { workspaceId: string }) {
     <NotebookShell
       workspaceId={data.id}
       title={data.title}
-      sources={
-        <p className="text-sm text-muted-foreground">
-          Upload PDFs, docs, YouTube, or web links here. Coming in the next
-          phase.
-        </p>
-      }
+      sources={<SourcesPane workspaceId={data.id} />}
       chat={
         <p className="text-sm text-muted-foreground">
           Chat grounded in your sources will live here.
