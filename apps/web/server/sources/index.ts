@@ -6,6 +6,7 @@ export {
   createYoutubeSource,
   deleteSource,
   getSourceById,
+  listEnabledReadySourceIds,
   listSources,
   setSourceStatus,
   type SourceDto,

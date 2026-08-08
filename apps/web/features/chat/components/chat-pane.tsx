@@ -2,40 +2,16 @@
 
 import {
   AssistantRuntimeProvider,
-  useAui,
-  useAuiState,
   useRemoteThreadListRuntime,
 } from "@assistant-ui/react"
 import { useDataStreamRuntime } from "@assistant-ui/react-data-stream"
 import { useMemo } from "react"
 
 import { Thread } from "@/components/assistant-ui/thread"
+import { ThreadList } from "@/components/assistant-ui/thread-list"
 import { CitationsDataUI } from "@/features/chat/components/citation-chips"
 import { createWorkspaceThreadListAdapter } from "@/features/chat/thread-list-adapter"
-import { Button } from "@workspace/ui/components/button"
-
-function ChatToolbar() {
-  const aui = useAui()
-  const title = useAuiState((state) => state.threadListItem.title)
-
-  return (
-    <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-      <p className="truncate text-sm text-muted-foreground">
-        {title?.trim() || "New chat"}
-      </p>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => {
-          void aui.threads.switchToNewThread()
-        }}
-      >
-        New chat
-      </Button>
-    </div>
-  )
-}
+import { useSources } from "@/features/sources/hooks"
 
 function useWorkspaceDataStreamRuntime(workspaceId: string) {
   return useDataStreamRuntime({
@@ -44,7 +20,25 @@ function useWorkspaceDataStreamRuntime(workspaceId: string) {
   })
 }
 
+function NoReadySourcesEmpty() {
+  return (
+    <div className="flex h-full min-h-0 flex-col items-center justify-center gap-2 px-6 text-center">
+      <p className="text-base font-medium">No ready sources yet</p>
+      <p className="max-w-sm text-sm text-muted-foreground">
+        Add a file, web page, or YouTube link in the Sources panel and wait until
+        it shows Ready. Chat only uses enabled ready sources.
+      </p>
+    </div>
+  )
+}
+
 export function ChatPane({ workspaceId }: { workspaceId: string }) {
+  const sourcesQuery = useSources(workspaceId)
+  const readyCount =
+    sourcesQuery.data?.filter(
+      (source) => source.status === "ready" && source.enabled
+    ).length ?? 0
+
   const adapter = useMemo(
     () => createWorkspaceThreadListAdapter(workspaceId),
     [workspaceId]
@@ -62,13 +56,30 @@ export function ChatPane({ workspaceId }: { workspaceId: string }) {
     runtimeHook: useThreadRuntime,
   })
 
+  const showChat = !sourcesQuery.isLoading && readyCount > 0
+
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <CitationsDataUI />
-      <div className="flex h-full min-h-0 flex-col">
-        <ChatToolbar />
-        <div className="min-h-0 flex-1">
-          <Thread />
+      <div className="flex h-full min-h-0">
+        <aside className="flex w-56 shrink-0 flex-col border-r bg-muted/20 p-2">
+          <p className="mb-1 px-2.5 text-xs font-medium text-muted-foreground">
+            Conversations
+          </p>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <ThreadList />
+          </div>
+        </aside>
+        <div className="min-h-0 min-w-0 flex-1">
+          {sourcesQuery.isLoading ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              Loading sources…
+            </div>
+          ) : showChat ? (
+            <Thread />
+          ) : (
+            <NoReadySourcesEmpty />
+          )}
         </div>
       </div>
     </AssistantRuntimeProvider>

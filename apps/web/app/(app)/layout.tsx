@@ -2,7 +2,7 @@ import Link from "next/link"
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 
-import { SignOutButton } from "@/features/auth"
+import { AppNavActions } from "@/features/auth"
 import { auth } from "@/server/auth/auth"
 
 export default async function AppLayout({
@@ -20,14 +20,11 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-svh">
-      <header className="flex h-17 items-center justify-between border-b px-6">
-        <div>
-          <Link href="/workspaces" className="font-medium">
-            Manthan
-          </Link>
-          <p className="text-sm text-muted-foreground">{session.user.email}</p>
-        </div>
-        <SignOutButton />
+      <header className="flex h-12 items-center justify-between gap-4 border-b px-4">
+        <Link href="/workspaces" className="font-medium tracking-tight">
+          Manthan
+        </Link>
+        <AppNavActions />
       </header>
       <div>{children}</div>
     </div>

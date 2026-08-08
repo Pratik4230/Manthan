@@ -14,6 +14,7 @@ type ThreadRow = {
   id: string
   title: string | null
   status: "regular" | "archived"
+  updatedAt: string
 }
 
 type MessageRow = {
@@ -69,6 +70,7 @@ export function createWorkspaceThreadListAdapter(
           status: thread.status,
           remoteId: thread.id,
           title: thread.title ?? undefined,
+          lastMessageAt: new Date(thread.updatedAt),
         })),
       }
     },
@@ -137,6 +139,7 @@ export function createWorkspaceThreadListAdapter(
         status: data.thread.status,
         remoteId: data.thread.id,
         title: data.thread.title ?? undefined,
+        lastMessageAt: new Date(data.thread.updatedAt),
       }
     },
     async generateTitle(remoteId, messages) {

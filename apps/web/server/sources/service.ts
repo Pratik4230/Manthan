@@ -276,6 +276,32 @@ export async function listSources(
   return sources.map((source) => toDto(source as Source))
 }
 
+export async function listEnabledReadySourceIds(
+  ownerId: string,
+  workspaceId: string
+): Promise<string[]> {
+  const workspace = await assertWorkspaceOwner(ownerId, workspaceId)
+  if (!workspace) {
+    throw new Response(JSON.stringify({ error: "Workspace not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  const collection = await getSourcesCollection()
+  const sources = await collection
+    .find({
+      workspaceId,
+      ownerId,
+      enabled: true,
+      status: "ready",
+    })
+    .project({ _id: 1 })
+    .toArray()
+
+  return sources.map((source) => source._id.toHexString())
+}
+
 export async function deleteSource(
   ownerId: string,
   workspaceId: string,

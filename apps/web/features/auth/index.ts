@@ -1,3 +1,4 @@
+export { AppNavActions } from "@/features/auth/components/app-nav-actions"
 export { authClient } from "@/features/auth/auth-client"
 export { SignInForm } from "@/features/auth/components/sign-in-form"
 export { SignOutButton } from "@/features/auth/components/sign-out-button"

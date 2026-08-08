@@ -5,7 +5,10 @@ export function proxy(request: NextRequest) {
   const sessionCookie = getSessionCookie(request)
   const { pathname } = request.nextUrl
 
-  if (pathname.startsWith("/workspaces") && !sessionCookie) {
+  if (
+    (pathname.startsWith("/workspaces") || pathname.startsWith("/profile")) &&
+    !sessionCookie
+  ) {
     return NextResponse.redirect(new URL("/login", request.url))
   }
 
@@ -20,5 +23,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/workspaces/:path*", "/login", "/signup"],
+  matcher: ["/workspaces/:path*", "/profile", "/login", "/signup"],
 }

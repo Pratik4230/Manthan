@@ -11,6 +11,7 @@ import {
   type RagCitation,
 } from "@/server/ai/graph"
 import { requireSession } from "@/server/auth/session"
+import { listEnabledReadySourceIds } from "@/server/sources/service"
 import { getWorkspace } from "@/server/workspaces/service"
 
 type RouteContext = {
@@ -74,7 +75,19 @@ export async function POST(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Message required" }, { status: 400 })
     }
 
+    const sourceIds = await listEnabledReadySourceIds(
+      session.user.id,
+      workspaceId
+    )
+
     return createAssistantStreamResponse(async (controller) => {
+      if (sourceIds.length === 0) {
+        controller.appendText(
+          "Add at least one ready source in the Sources panel, then ask again. I can only answer from enabled sources in this workspace."
+        )
+        return
+      }
+
       let streamed = false
       let citations: RagCitation[] = []
 
@@ -82,6 +95,7 @@ export async function POST(request: Request, context: RouteContext) {
         {
           messages: [new HumanMessage(question)],
           workspaceId,
+          sourceIds,
           instructions: workspace.instructions || undefined,
         },
         {

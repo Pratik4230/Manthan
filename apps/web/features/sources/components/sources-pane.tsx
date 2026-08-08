@@ -2,6 +2,7 @@
 
 import { useForm } from "@tanstack/react-form"
 import { upload } from "@imagekit/next"
+import { PlusIcon } from "lucide-react"
 import { useRef, useState } from "react"
 import { toast } from "sonner"
 
@@ -33,6 +34,14 @@ import {
 } from "@workspace/ui/components/field"
 import { Input } from "@workspace/ui/components/input"
 import { Progress } from "@workspace/ui/components/progress"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@workspace/ui/components/sheet"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 function statusLabel(status: string) {
@@ -63,15 +72,14 @@ function sourceSubtitle(source: {
   return source.url
 }
 
-export function SourcesPane({ workspaceId }: { workspaceId: string }) {
+function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [open, setOpen] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
   const [uploading, setUploading] = useState(false)
-  const { data, isLoading, isError, error, refetch } = useSources(workspaceId)
   const createSource = useCreateFileSource(workspaceId)
   const createWebSource = useCreateWebSource(workspaceId)
   const createYoutubeSource = useCreateYoutubeSource(workspaceId)
-  const deleteSource = useDeleteSource(workspaceId)
 
   const webForm = useForm({
     defaultValues: { url: "" },
@@ -83,6 +91,7 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
         await createWebSource.mutateAsync({ url: value.url })
         toast.success("Web page added")
         webForm.reset()
+        setOpen(false)
       } catch (err) {
         toast.error(err instanceof Error ? err.message : "Failed to add URL")
       }
@@ -99,6 +108,7 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
         await createYoutubeSource.mutateAsync({ url: value.url })
         toast.success("YouTube video added")
         youtubeForm.reset()
+        setOpen(false)
       } catch (err) {
         toast.error(
           err instanceof Error ? err.message : "Failed to add YouTube URL"
@@ -161,6 +171,7 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
       })
 
       toast.success("File uploaded")
+      setOpen(false)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Upload failed")
     } finally {
@@ -173,129 +184,160 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="space-y-2">
-        <input
-          ref={inputRef}
-          type="file"
-          className="hidden"
-          accept={ACCEPT_FILE_TYPES}
-          disabled={uploading}
-          onChange={(event) => void handleFiles(event.target.files)}
-        />
-        <Button
-          className="w-full"
-          disabled={uploading}
-          onClick={() => inputRef.current?.click()}
-        >
-          {uploading ? "Uploading…" : "Upload file"}
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button size="sm" className="w-full gap-1">
+          <PlusIcon className="size-3.5" />
+          Add
         </Button>
-        <p className="text-xs text-muted-foreground">
-          PDF, DOCX, XLSX, CSV, TXT, MD
-        </p>
-        {progress !== null ? (
-          <Progress value={progress} className="h-2" />
-        ) : null}
-      </div>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-full sm:max-w-md">
+        <SheetHeader>
+          <SheetTitle>Add source</SheetTitle>
+          <SheetDescription>
+            Upload a file or paste a web or YouTube URL.
+          </SheetDescription>
+        </SheetHeader>
+        <div className="flex flex-col gap-6 px-4 pb-4">
+          <div className="space-y-2">
+            <input
+              ref={inputRef}
+              type="file"
+              className="hidden"
+              accept={ACCEPT_FILE_TYPES}
+              disabled={uploading}
+              onChange={(event) => void handleFiles(event.target.files)}
+            />
+            <Button
+              className="w-full"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+            >
+              {uploading ? "Uploading…" : "Upload file"}
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              PDF, DOCX, XLSX, CSV, TXT, MD
+            </p>
+            {progress !== null ? (
+              <Progress value={progress} className="h-2" />
+            ) : null}
+          </div>
 
-      <form
-        className="space-y-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          void webForm.handleSubmit()
-        }}
-      >
-        <FieldGroup>
-          <webForm.Field name="url">
-            {(field) => {
-              const isInvalid =
-                field.state.meta.isTouched && !field.state.meta.isValid
-              return (
-                <Field data-invalid={isInvalid}>
-                  <FieldLabel htmlFor="web-url">Web URL</FieldLabel>
-                  <Input
-                    id="web-url"
-                    name={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    placeholder="https://example.com/article"
-                    disabled={createWebSource.isPending}
-                    aria-invalid={isInvalid}
-                  />
-                  {isInvalid ? (
-                    <FieldError errors={field.state.meta.errors} />
-                  ) : null}
-                </Field>
-              )
+          <form
+            className="space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              void webForm.handleSubmit()
             }}
-          </webForm.Field>
-        </FieldGroup>
-        <Button
-          type="submit"
-          variant="outline"
-          className="w-full"
-          disabled={createWebSource.isPending}
-        >
-          {createWebSource.isPending ? "Adding…" : "Add web page"}
-        </Button>
-      </form>
+          >
+            <FieldGroup>
+              <webForm.Field name="url">
+                {(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor="web-url">Web URL</FieldLabel>
+                      <Input
+                        id="web-url"
+                        name={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.value)
+                        }
+                        placeholder="https://example.com/article"
+                        disabled={createWebSource.isPending}
+                        aria-invalid={isInvalid}
+                      />
+                      {isInvalid ? (
+                        <FieldError errors={field.state.meta.errors} />
+                      ) : null}
+                    </Field>
+                  )
+                }}
+              </webForm.Field>
+            </FieldGroup>
+            <Button
+              type="submit"
+              variant="outline"
+              className="w-full"
+              disabled={createWebSource.isPending}
+            >
+              {createWebSource.isPending ? "Adding…" : "Add web page"}
+            </Button>
+          </form>
 
-      <form
-        className="space-y-2"
-        onSubmit={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          void youtubeForm.handleSubmit()
-        }}
-      >
-        <FieldGroup>
-          <youtubeForm.Field name="url">
-            {(field) => {
-              const isInvalid =
-                field.state.meta.isTouched && !field.state.meta.isValid
-              return (
-                <Field data-invalid={isInvalid}>
-                  <FieldLabel htmlFor="youtube-url">YouTube URL</FieldLabel>
-                  <Input
-                    id="youtube-url"
-                    name={field.name}
-                    value={field.state.value}
-                    onBlur={field.handleBlur}
-                    onChange={(event) => field.handleChange(event.target.value)}
-                    placeholder="https://www.youtube.com/watch?v=…"
-                    disabled={createYoutubeSource.isPending}
-                    aria-invalid={isInvalid}
-                  />
-                  {isInvalid ? (
-                    <FieldError errors={field.state.meta.errors} />
-                  ) : null}
-                </Field>
-              )
+          <form
+            className="space-y-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              void youtubeForm.handleSubmit()
             }}
-          </youtubeForm.Field>
-        </FieldGroup>
-        <Button
-          type="submit"
-          variant="outline"
-          className="w-full"
-          disabled={createYoutubeSource.isPending}
-        >
-          {createYoutubeSource.isPending ? "Adding…" : "Add YouTube video"}
-        </Button>
-      </form>
+          >
+            <FieldGroup>
+              <youtubeForm.Field name="url">
+                {(field) => {
+                  const isInvalid =
+                    field.state.meta.isTouched && !field.state.meta.isValid
+                  return (
+                    <Field data-invalid={isInvalid}>
+                      <FieldLabel htmlFor="youtube-url">YouTube URL</FieldLabel>
+                      <Input
+                        id="youtube-url"
+                        name={field.name}
+                        value={field.state.value}
+                        onBlur={field.handleBlur}
+                        onChange={(event) =>
+                          field.handleChange(event.target.value)
+                        }
+                        placeholder="https://www.youtube.com/watch?v=…"
+                        disabled={createYoutubeSource.isPending}
+                        aria-invalid={isInvalid}
+                      />
+                      {isInvalid ? (
+                        <FieldError errors={field.state.meta.errors} />
+                      ) : null}
+                    </Field>
+                  )
+                }}
+              </youtubeForm.Field>
+            </FieldGroup>
+            <Button
+              type="submit"
+              variant="outline"
+              className="w-full"
+              disabled={createYoutubeSource.isPending}
+            >
+              {createYoutubeSource.isPending ? "Adding…" : "Add YouTube video"}
+            </Button>
+          </form>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
+export function SourcesPane({ workspaceId }: { workspaceId: string }) {
+  const { data, isLoading, isError, error, refetch } = useSources(workspaceId)
+  const deleteSource = useDeleteSource(workspaceId)
+
+  return (
+    <div className="flex h-full flex-col gap-2">
+      <AddSourceSheet workspaceId={workspaceId} />
 
       {isLoading ? (
         <div className="space-y-2">
-          <Skeleton className="h-14 w-full" />
-          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-12 w-full" />
+          <Skeleton className="h-12 w-full" />
         </div>
       ) : null}
 
       {isError ? (
         <div className="space-y-2">
-          <p className="text-sm text-destructive">
+          <p className="text-xs text-destructive">
             {error instanceof Error ? error.message : "Failed to load sources"}
           </p>
           <Button variant="outline" size="sm" onClick={() => void refetch()}>
@@ -305,31 +347,34 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
       ) : null}
 
       {!isLoading && !isError && data?.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          No sources yet. Upload a file, add a web page, or paste a YouTube
-          link.
+        <p className="px-0.5 text-xs text-muted-foreground">
+          No sources yet. Tap Add to upload a file or paste a URL.
         </p>
       ) : null}
 
-      <ul className="space-y-2">
+      <ul className="space-y-1.5">
         {data?.map((source) => (
-          <li key={source.id} className="rounded-xl border p-3">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 space-y-1">
-                <p className="truncate text-sm font-medium">{source.title}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {sourceSubtitle(source)}
-                </p>
-                <Badge variant={statusVariant(source.status)}>
-                  {statusLabel(source.status)}
-                </Badge>
-                {source.error ? (
-                  <p className="text-xs text-destructive">{source.error}</p>
-                ) : null}
-              </div>
+          <li key={source.id} className="rounded-lg border p-2">
+            <div className="space-y-1.5">
+              <p className="truncate text-xs font-medium leading-snug">
+                {source.title}
+              </p>
+              <Badge
+                variant={statusVariant(source.status)}
+                className="text-[10px]"
+              >
+                {statusLabel(source.status)}
+              </Badge>
+              {source.error ? (
+                <p className="text-[10px] text-destructive">{source.error}</p>
+              ) : null}
+              <p className="truncate text-[10px] text-muted-foreground">
+                {sourceSubtitle(source)}
+              </p>
               <Button
                 variant="ghost"
                 size="sm"
+                className="h-7 w-full px-2 text-xs"
                 disabled={deleteSource.isPending}
                 onClick={() => {
                   void deleteSource
