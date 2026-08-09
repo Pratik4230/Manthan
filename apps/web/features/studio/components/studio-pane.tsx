@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { Maximize2Icon } from "lucide-react"
 import { toast } from "sonner"
 
 import { useSources } from "@/features/sources/hooks"
@@ -20,6 +21,12 @@ import {
 import type { ArtifactDto } from "@/server/artifacts"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@workspace/ui/components/dialog"
 import { Skeleton } from "@workspace/ui/components/skeleton"
 
 function statusLabel(status: string) {
@@ -39,7 +46,13 @@ function statusVariant(
   return "outline"
 }
 
-function ArtifactBody({ artifact }: { artifact: ArtifactDto }) {
+function ArtifactBody({
+  artifact,
+  expanded = false,
+}: {
+  artifact: ArtifactDto
+  expanded?: boolean
+}) {
   if (artifact.status === "pending" || artifact.status === "processing") {
     return (
       <p className="text-sm text-muted-foreground">
@@ -58,9 +71,135 @@ function ArtifactBody({ artifact }: { artifact: ArtifactDto }) {
 
   const markdown = artifactContentToMarkdown(artifact.type, artifact.content)
   return (
-    <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed">
+    <pre
+      className={
+        expanded
+          ? "whitespace-pre-wrap text-sm leading-relaxed"
+          : "max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed"
+      }
+    >
       {markdown || "No content"}
     </pre>
+  )
+}
+
+type ArtifactActionsProps = {
+  artifact: ArtifactDto
+  readyCount: number
+  regeneratePending: boolean
+  deletePending: boolean
+  onRegenerate: () => void
+  onDelete: () => void
+}
+
+function ArtifactActions({
+  artifact,
+  readyCount,
+  regeneratePending,
+  deletePending,
+  onRegenerate,
+  onDelete,
+}: ArtifactActionsProps) {
+  const canCopy =
+    artifact.status === "ready" &&
+    artifact.content &&
+    typeof navigator !== "undefined"
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        disabled={!canCopy}
+        onClick={() => {
+          const markdown = artifactContentToMarkdown(
+            artifact.type,
+            artifact.content
+          )
+          void navigator.clipboard
+            .writeText(markdown)
+            .then(() => toast.success("Copied"))
+            .catch(() => toast.error("Copy failed"))
+        }}
+      >
+        Copy
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 text-xs"
+        disabled={
+          regeneratePending ||
+          artifact.status === "pending" ||
+          artifact.status === "processing" ||
+          readyCount === 0
+        }
+        onClick={onRegenerate}
+      >
+        Regenerate
+      </Button>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-7 text-xs"
+        disabled={deletePending}
+        onClick={onDelete}
+      >
+        Delete
+      </Button>
+    </div>
+  )
+}
+
+function ArtifactExpandDialog({
+  artifact,
+  open,
+  onOpenChange,
+  readyCount,
+  regeneratePending,
+  deletePending,
+  onRegenerate,
+  onDelete,
+}: {
+  artifact: ArtifactDto
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  readyCount: number
+  regeneratePending: boolean
+  deletePending: boolean
+  onRegenerate: () => void
+  onDelete: () => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex h-[min(92vh,960px)] w-[calc(100%-2rem)] max-w-5xl flex-col gap-4 overflow-hidden p-6 sm:max-w-5xl">
+        <DialogHeader className="shrink-0 gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2">
+            <DialogTitle>{ARTIFACT_TYPE_LABELS[artifact.type]}</DialogTitle>
+            <Badge variant={statusVariant(artifact.status)}>
+              {statusLabel(artifact.status)}
+            </Badge>
+          </div>
+        </DialogHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto rounded-lg border bg-muted/20 p-4">
+          <ArtifactBody artifact={artifact} expanded />
+        </div>
+        <div className="shrink-0">
+          <ArtifactActions
+            artifact={artifact}
+            readyCount={readyCount}
+            regeneratePending={regeneratePending}
+            deletePending={deletePending}
+            onRegenerate={onRegenerate}
+            onDelete={() => {
+              onDelete()
+              onOpenChange(false)
+            }}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -78,6 +217,7 @@ export function StudioPane({ workspaceId }: { workspaceId: string }) {
   const regenerateArtifact = useRegenerateArtifact(workspaceId)
   const deleteArtifact = useDeleteArtifact(workspaceId)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [expandOpen, setExpandOpen] = useState(false)
 
   const sourcesFingerprint =
     sourcesQuery.data
@@ -101,6 +241,29 @@ export function StudioPane({ workspaceId }: { workspaceId: string }) {
     artifacts.find((artifact) => artifact.id === selectedId) ??
     artifacts[0] ??
     null
+
+  function handleRegenerate(artifactId: string) {
+    void regenerateArtifact
+      .mutateAsync(artifactId)
+      .then(() => toast.success("Regeneration queued"))
+      .catch((err: unknown) =>
+        toast.error(
+          err instanceof Error ? err.message : "Failed to regenerate"
+        )
+      )
+  }
+
+  function handleDelete(artifactId: string) {
+    void deleteArtifact
+      .mutateAsync(artifactId)
+      .then(() => {
+        setSelectedId(null)
+        toast.success("Artifact removed")
+      })
+      .catch((err: unknown) =>
+        toast.error(err instanceof Error ? err.message : "Failed to delete")
+      )
+  }
 
   if (workspaceLoading || sourcesQuery.isLoading || artifactsQuery.isLoading) {
     return (
@@ -230,84 +393,46 @@ export function StudioPane({ workspaceId }: { workspaceId: string }) {
       {selected ? (
         <div className="space-y-2 border-t pt-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-sm font-medium">
-              {ARTIFACT_TYPE_LABELS[selected.type]}
-            </p>
-            <Badge variant={statusVariant(selected.status)}>
-              {statusLabel(selected.status)}
-            </Badge>
+            <div className="flex min-w-0 items-center gap-2">
+              <p className="truncate text-sm font-medium">
+                {ARTIFACT_TYPE_LABELS[selected.type]}
+              </p>
+              <Badge variant={statusVariant(selected.status)}>
+                {statusLabel(selected.status)}
+              </Badge>
+            </div>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="shrink-0"
+              disabled={selected.status !== "ready" || !selected.content}
+              onClick={() => setExpandOpen(true)}
+              aria-label="Expand artifact"
+              title="Expand"
+            >
+              <Maximize2Icon className="size-4" />
+            </Button>
           </div>
           <ArtifactBody artifact={selected} />
-          <div className="flex flex-wrap gap-1.5">
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              disabled={
-                selected.status !== "ready" ||
-                !selected.content ||
-                typeof navigator === "undefined"
-              }
-              onClick={() => {
-                const markdown = artifactContentToMarkdown(
-                  selected.type,
-                  selected.content
-                )
-                void navigator.clipboard
-                  .writeText(markdown)
-                  .then(() => toast.success("Copied"))
-                  .catch(() => toast.error("Copy failed"))
-              }}
-            >
-              Copy
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs"
-              disabled={
-                regenerateArtifact.isPending ||
-                selected.status === "pending" ||
-                selected.status === "processing" ||
-                readyCount === 0
-              }
-              onClick={() => {
-                void regenerateArtifact
-                  .mutateAsync(selected.id)
-                  .then(() => toast.success("Regeneration queued"))
-                  .catch((err: unknown) =>
-                    toast.error(
-                      err instanceof Error
-                        ? err.message
-                        : "Failed to regenerate"
-                    )
-                  )
-              }}
-            >
-              Regenerate
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs"
-              disabled={deleteArtifact.isPending}
-              onClick={() => {
-                void deleteArtifact
-                  .mutateAsync(selected.id)
-                  .then(() => {
-                    setSelectedId(null)
-                    toast.success("Artifact removed")
-                  })
-                  .catch((err: unknown) =>
-                    toast.error(
-                      err instanceof Error ? err.message : "Failed to delete"
-                    )
-                  )
-              }}
-            >
-              Delete
-            </Button>
-          </div>
+          <ArtifactActions
+            artifact={selected}
+            readyCount={readyCount}
+            regeneratePending={regenerateArtifact.isPending}
+            deletePending={deleteArtifact.isPending}
+            onRegenerate={() => handleRegenerate(selected.id)}
+            onDelete={() => handleDelete(selected.id)}
+          />
+          <ArtifactExpandDialog
+            artifact={selected}
+            open={expandOpen}
+            onOpenChange={setExpandOpen}
+            readyCount={readyCount}
+            regeneratePending={regenerateArtifact.isPending}
+            deletePending={deleteArtifact.isPending}
+            onRegenerate={() => handleRegenerate(selected.id)}
+            onDelete={() => handleDelete(selected.id)}
+          />
         </div>
       ) : null}
     </div>

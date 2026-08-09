@@ -83,6 +83,7 @@ export type ThreadComponents = {
 
 export type ThreadProps = {
   components?: ThreadComponents | undefined;
+  enableAttachments?: boolean;
 };
 
 const EMPTY_COMPONENTS: ThreadComponents = {};
@@ -90,19 +91,26 @@ const EMPTY_COMPONENTS: ThreadComponents = {};
 const ThreadComponentsContext =
   createContext<ThreadComponents>(EMPTY_COMPONENTS);
 
+const ThreadFeaturesContext = createContext({ enableAttachments: false });
+
 // Startup exposes a loading placeholder thread; treat it as a new chat so
 // the composer mounts centered. Loads after startup keep the docked layout.
 const isNewChatView = (s: AssistantState) =>
   s.thread.messages.length === 0 &&
   (!s.thread.isLoading || s.threads.isLoading);
 
-export const Thread: FC<ThreadProps> = ({ components = EMPTY_COMPONENTS }) => {
+export const Thread: FC<ThreadProps> = ({
+  components = EMPTY_COMPONENTS,
+  enableAttachments = false,
+}) => {
   const isEmpty = useAuiState(isNewChatView);
 
   return (
-    <ThreadComponentsContext.Provider value={components}>
-      <ThreadRoot isEmpty={isEmpty} />
-    </ThreadComponentsContext.Provider>
+    <ThreadFeaturesContext.Provider value={{ enableAttachments }}>
+      <ThreadComponentsContext.Provider value={components}>
+        <ThreadRoot isEmpty={isEmpty} />
+      </ThreadComponentsContext.Provider>
+    </ThreadFeaturesContext.Provider>
   );
 };
 
@@ -226,33 +234,50 @@ const ThreadSuggestionItem: FC = () => {
 };
 
 const Composer: FC = () => {
+  const { enableAttachments } = useContext(ThreadFeaturesContext);
+
+  const shell = (
+    <div
+      data-slot="aui_composer-shell"
+      className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none"
+    >
+      {enableAttachments ? <ComposerAttachments /> : null}
+      <ComposerPrimitive.Input
+        placeholder="Send a message..."
+        className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
+        rows={1}
+        autoFocus
+        enterKeyHint="send"
+        aria-label="Message input"
+      />
+      <ComposerAction />
+    </div>
+  );
+
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
-      <ComposerPrimitive.AttachmentDropzone asChild>
-        <div
-          data-slot="aui_composer-shell"
-          className="border-border/60 data-[dragging=true]:border-ring focus-within:border-border dark:border-muted-foreground/15 dark:focus-within:border-muted-foreground/30 flex w-full flex-col gap-2 rounded-(--composer-radius) border bg-(--composer-bg) p-(--composer-padding) shadow-[0_4px_16px_-8px_rgba(0,0,0,0.08),0_1px_2px_rgba(0,0,0,0.04)] transition-[border-color,box-shadow] focus-within:shadow-[0_6px_24px_-8px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.05)] data-[dragging=true]:border-dashed data-[dragging=true]:bg-[color-mix(in_oklab,var(--color-accent)_50%,var(--color-background))] dark:shadow-none"
-        >
-          <ComposerAttachments />
-          <ComposerPrimitive.Input
-            placeholder="Send a message..."
-            className="aui-composer-input caret-primary placeholder:text-muted-foreground/80 max-h-32 min-h-10 w-full resize-none bg-transparent px-2.5 py-1 text-base outline-none"
-            rows={1}
-            autoFocus
-            enterKeyHint="send"
-            aria-label="Message input"
-          />
-          <ComposerAction />
-        </div>
-      </ComposerPrimitive.AttachmentDropzone>
+      {enableAttachments ? (
+        <ComposerPrimitive.AttachmentDropzone asChild>
+          {shell}
+        </ComposerPrimitive.AttachmentDropzone>
+      ) : (
+        shell
+      )}
     </ComposerPrimitive.Root>
   );
 };
 
 const ComposerAction: FC = () => {
+  const { enableAttachments } = useContext(ThreadFeaturesContext);
+
   return (
-    <div className="aui-composer-action-wrapper relative flex items-center justify-between">
-      <ComposerAddAttachment />
+    <div
+      className={cn(
+        "aui-composer-action-wrapper relative flex items-center",
+        enableAttachments ? "justify-between" : "justify-end",
+      )}
+    >
+      {enableAttachments ? <ComposerAddAttachment /> : null}
       <div className="flex items-center gap-1.5">
         <AuiIf condition={(s) => s.thread.capabilities.dictation}>
           <AuiIf condition={(s) => s.composer.dictation == null}>
@@ -477,13 +502,15 @@ const AssistantActionBar: FC = () => {
 };
 
 const UserMessage: FC = () => {
+  const { enableAttachments } = useContext(ThreadFeaturesContext);
+
   return (
     <MessagePrimitive.Root
       data-slot="aui_user-message-root"
       className="fade-in slide-in-from-bottom-1 animate-in grid auto-rows-auto grid-cols-[minmax(72px,1fr)_auto] content-start gap-y-2 px-2 duration-150 [contain-intrinsic-size:auto_200px] [content-visibility:auto] [&:where(>*)]:col-start-2"
       data-role="user"
     >
-      <UserMessageAttachments />
+      {enableAttachments ? <UserMessageAttachments /> : null}
 
       <div className="aui-user-message-content-wrapper relative col-start-2 min-w-0">
         <div className="aui-user-message-content peer bg-muted text-foreground rounded-xl px-4 py-2 wrap-break-word empty:hidden">

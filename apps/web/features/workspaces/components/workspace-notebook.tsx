@@ -36,6 +36,7 @@ export function WorkspaceNotebook({ workspaceId }: { workspaceId: string }) {
 
   return (
     <NotebookShell
+      workspaceId={data.id}
       title={data.title}
       sources={<SourcesPane workspaceId={data.id} />}
       chat={<ChatPane workspaceId={data.id} />}
