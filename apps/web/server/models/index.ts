@@ -17,3 +17,14 @@ export type {
   ChatMessage,
   ChatMessageDocument,
 } from "@/server/models/chat-message"
+export type {
+  Artifact,
+  ArtifactDocument,
+  ArtifactStatus,
+  ArtifactType,
+} from "@/server/models/artifact"
+export {
+  ARTIFACT_STATUSES,
+  ARTIFACT_TYPE_LABELS,
+  ARTIFACT_TYPES,
+} from "@/server/models/artifact"

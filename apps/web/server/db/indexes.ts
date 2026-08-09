@@ -12,6 +12,7 @@ async function createIndexes() {
   const chunks = db.collection(collections.chunks)
   const threads = db.collection(collections.threads)
   const chatMessages = db.collection(collections.chatMessages)
+  const artifacts = db.collection(collections.artifacts)
 
   await Promise.all([
     workspaces.createIndex(
@@ -50,6 +51,14 @@ async function createIndexes() {
     chatMessages.createIndex(
       { threadId: 1, messageId: 1 },
       { name: "threadId_messageId", unique: true }
+    ),
+    artifacts.createIndex(
+      { workspaceId: 1, ownerId: 1, updatedAt: -1 },
+      { name: "workspaceId_ownerId_updatedAt" }
+    ),
+    artifacts.createIndex(
+      { workspaceId: 1, type: 1, updatedAt: -1 },
+      { name: "workspaceId_type_updatedAt" }
     ),
   ])
 }
