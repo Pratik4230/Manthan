@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { createChatModel } from "@/server/integrations/openai"
+import { createInternalChatModel } from "@/server/integrations/openai"
 
 const hydeSchema = z.object({
   hypotheticalPassage: z
@@ -16,7 +16,7 @@ export async function generateHydePassage(searchQuery: string): Promise<string> 
     return ""
   }
 
-  const model = createChatModel().withStructuredOutput(hydeSchema)
+  const model = createInternalChatModel().withStructuredOutput(hydeSchema)
 
   const result = await model.invoke([
     {

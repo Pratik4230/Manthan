@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { createChatModel } from "@/server/integrations/openai"
+import { createInternalChatModel } from "@/server/integrations/openai"
 
 export const MAX_SUB_QUERIES = 3
 
@@ -18,7 +18,7 @@ export async function decomposeSearchQueries(input: {
   lastUserMessage: string
   rewrittenQuery: string
 }): Promise<string[]> {
-  const model = createChatModel().withStructuredOutput(decomposeSchema)
+  const model = createInternalChatModel().withStructuredOutput(decomposeSchema)
 
   const result = await model.invoke([
     {

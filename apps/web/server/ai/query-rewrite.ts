@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { createChatModel } from "@/server/integrations/openai"
+import { createInternalChatModel } from "@/server/integrations/openai"
 
 const rewriteSchema = z.object({
   searchQuery: z
@@ -19,7 +19,7 @@ export async function rewriteSearchQuery(input: {
     return ""
   }
 
-  const model = createChatModel().withStructuredOutput(rewriteSchema)
+  const model = createInternalChatModel().withStructuredOutput(rewriteSchema)
 
   const result = await model.invoke([
     {

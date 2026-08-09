@@ -28,6 +28,11 @@ type ChatMessage = {
   content?: string | ChatMessagePart[]
 }
 
+const STREAMABLE_GRAPH_NODES = new Set([
+  "generate",
+  "generate_conversational",
+])
+
 function extractMessageText(message: ChatMessage): string {
   const content = message.content
   if (typeof content === "string") {
@@ -133,6 +138,13 @@ export async function POST(request: Request, context: RouteContext) {
 
       for await (const event of events) {
         if (event.event === "on_chat_model_stream") {
+          const node = event.metadata?.langgraph_node
+          if (
+            typeof node !== "string" ||
+            !STREAMABLE_GRAPH_NODES.has(node)
+          ) {
+            continue
+          }
           const chunk = event.data?.chunk as { text?: string } | undefined
           const delta = chunk?.text ?? ""
           if (delta) {

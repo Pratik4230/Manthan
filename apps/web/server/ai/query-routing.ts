@@ -1,7 +1,7 @@
 import { z } from "zod"
 
 import { formatThreadForPrompt } from "@/server/ai/messages"
-import { createChatModel } from "@/server/integrations/openai"
+import { createInternalChatModel } from "@/server/integrations/openai"
 
 const routingSchema = z.object({
   needsRetrieval: z
@@ -27,7 +27,7 @@ export async function routeQuery(input: {
     return { needsRetrieval: false, shouldDecompose: false }
   }
 
-  const model = createChatModel().withStructuredOutput(routingSchema)
+  const model = createInternalChatModel().withStructuredOutput(routingSchema)
 
   const result = await model.invoke([
     {

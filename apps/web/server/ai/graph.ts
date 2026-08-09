@@ -139,7 +139,7 @@ async function generate(state: typeof WorkspaceRagState.State) {
     }
   }
 
-  const model = createChatModel()
+  const model = createChatModel({ streaming: true })
   const stream = await model.stream([
     new SystemMessage(buildSystemPrompt(state.instructions)),
     new HumanMessage(
@@ -168,7 +168,7 @@ async function generateConversational(state: typeof WorkspaceRagState.State) {
     ? `Conversation so far:\n${threadText}\n\nLatest message:\n${question}`
     : question
 
-  const model = createChatModel()
+  const model = createChatModel({ streaming: true })
   const stream = await model.stream([
     new SystemMessage(buildConversationalSystemPrompt(state.instructions)),
     new HumanMessage(userContent),
