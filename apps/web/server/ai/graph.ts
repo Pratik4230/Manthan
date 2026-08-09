@@ -11,14 +11,22 @@ import {
   StateGraph,
 } from "@langchain/langgraph"
 
+import { formatThreadForPrompt, lastUserText } from "@/server/ai/messages"
+import { prepareSearchQueries } from "@/server/ai/prepare-queries"
 import {
+  buildConversationalSystemPrompt,
   buildSystemPrompt,
   buildUserPromptWithContext,
   formatRetrievedContext,
 } from "@/server/ai/prompts"
+import {
+  buildRoutingThreadText,
+  routeQuery,
+} from "@/server/ai/query-routing"
 import { createChatModel } from "@/server/integrations/openai"
 import {
-  searchWorkspaceChunks,
+  mergeChunkHits,
+  searchWorkspaceChunksWithHyde,
   type WorkspaceChunkHit,
 } from "@/server/vector/retrieve"
 
@@ -35,6 +43,22 @@ export const WorkspaceRagState = Annotation.Root({
   workspaceId: Annotation<string>(),
   sourceIds: Annotation<string[] | undefined>(),
   instructions: Annotation<string | undefined>(),
+  needsRetrieval: Annotation<boolean>({
+    reducer: (_current, update) => update,
+    default: () => true,
+  }),
+  shouldDecompose: Annotation<boolean>({
+    reducer: (_current, update) => update,
+    default: () => false,
+  }),
+  searchQueries: Annotation<string[]>({
+    reducer: (_current, update) => update,
+    default: () => [],
+  }),
+  hydePassages: Annotation<string[]>({
+    reducer: (_current, update) => update,
+    default: () => [],
+  }),
   hits: Annotation<WorkspaceChunkHit[]>({
     reducer: (_current, update) => update,
     default: () => [],
@@ -45,32 +69,56 @@ export const WorkspaceRagState = Annotation.Root({
   }),
 })
 
-function lastUserText(
-  messages: (typeof WorkspaceRagState.State)["messages"]
-): string {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const message = messages[i]
-    if (!message || !HumanMessage.isInstance(message)) {
-      continue
-    }
-    return message.text
+async function route(state: typeof WorkspaceRagState.State) {
+  const lastUserMessage = lastUserText(state.messages).trim()
+  if (!lastUserMessage) {
+    return { needsRetrieval: false, shouldDecompose: false }
   }
-  return ""
+
+  const routing = await routeQuery({
+    threadText: buildRoutingThreadText(state.messages),
+    lastUserMessage,
+  })
+
+  return {
+    needsRetrieval: routing.needsRetrieval,
+    shouldDecompose: routing.shouldDecompose,
+  }
+}
+
+function routeAfterClassification(state: typeof WorkspaceRagState.State) {
+  return state.needsRetrieval ? "prepare_queries" : "generate_conversational"
+}
+
+async function prepareQueries(state: typeof WorkspaceRagState.State) {
+  const prepared = await prepareSearchQueries({
+    messages: state.messages,
+    shouldDecompose: state.shouldDecompose,
+  })
+
+  return {
+    searchQueries: prepared.searchQueries,
+    hydePassages: prepared.hydePassages,
+  }
 }
 
 async function retrieve(state: typeof WorkspaceRagState.State) {
-  const query = lastUserText(state.messages).trim()
-  if (!query || !state.workspaceId) {
+  if (!state.workspaceId || state.searchQueries.length === 0) {
     return { hits: [] as WorkspaceChunkHit[] }
   }
 
-  const hits = await searchWorkspaceChunks({
-    workspaceId: state.workspaceId,
-    query,
-    sourceIds: state.sourceIds,
-  })
+  const batches = await Promise.all(
+    state.searchQueries.map((query, index) =>
+      searchWorkspaceChunksWithHyde({
+        workspaceId: state.workspaceId,
+        query,
+        hydePassage: state.hydePassages[index],
+        sourceIds: state.sourceIds,
+      })
+    )
+  )
 
-  return { hits }
+  return { hits: mergeChunkHits(batches) }
 }
 
 async function generate(state: typeof WorkspaceRagState.State) {
@@ -107,6 +155,33 @@ async function generate(state: typeof WorkspaceRagState.State) {
   return { messages: [new AIMessage(text)] }
 }
 
+async function generateConversational(state: typeof WorkspaceRagState.State) {
+  const question = lastUserText(state.messages).trim()
+  if (!question) {
+    return {
+      messages: [new AIMessage("Ask a question about your workspace sources.")],
+    }
+  }
+
+  const threadText = formatThreadForPrompt(state.messages.slice(0, -1))
+  const userContent = threadText
+    ? `Conversation so far:\n${threadText}\n\nLatest message:\n${question}`
+    : question
+
+  const model = createChatModel()
+  const stream = await model.stream([
+    new SystemMessage(buildConversationalSystemPrompt(state.instructions)),
+    new HumanMessage(userContent),
+  ])
+
+  let text = ""
+  for await (const chunk of stream) {
+    text += chunk.text
+  }
+
+  return { messages: [new AIMessage(text)] }
+}
+
 function cite(state: typeof WorkspaceRagState.State) {
   const last = state.messages.at(-1)
   const answer = last && AIMessage.isInstance(last) ? last.text : ""
@@ -133,12 +208,21 @@ function cite(state: typeof WorkspaceRagState.State) {
 
 export function createWorkspaceRagGraph() {
   return new StateGraph(WorkspaceRagState)
+    .addNode("route", route)
+    .addNode("prepare_queries", prepareQueries)
     .addNode("retrieve", retrieve)
     .addNode("generate", generate)
+    .addNode("generate_conversational", generateConversational)
     .addNode("cite", cite)
-    .addEdge(START, "retrieve")
+    .addEdge(START, "route")
+    .addConditionalEdges("route", routeAfterClassification, {
+      prepare_queries: "prepare_queries",
+      generate_conversational: "generate_conversational",
+    })
+    .addEdge("prepare_queries", "retrieve")
     .addEdge("retrieve", "generate")
     .addEdge("generate", "cite")
+    .addEdge("generate_conversational", END)
     .addEdge("cite", END)
     .compile()
 }

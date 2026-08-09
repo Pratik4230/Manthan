@@ -34,3 +34,21 @@ export function buildUserPromptWithContext(
 ): string {
   return `Source excerpts:\n\n${context}\n\nQuestion:\n${question}`
 }
+
+export function buildConversationalSystemPrompt(instructions?: string): string {
+  const base = [
+    "You are Manthan, a source-grounded research workspace assistant.",
+    "The user's message does not require searching their uploaded sources right now.",
+    "You may greet them, explain how Manthan works, or answer general questions such as the current date or time.",
+    "Do not claim facts about the user's documents, files, or sources without retrieval.",
+    "Do not invent citations or pretend you searched their workspace.",
+    "If they ask about specific content in their sources, suggest they rephrase as a document question so you can search.",
+  ].join(" ")
+
+  const trimmed = instructions?.trim()
+  if (!trimmed) {
+    return base
+  }
+
+  return `${base}\n\nWorkspace instructions (apply when relevant, but do not invent source content):\n${trimmed}`
+}

@@ -28,31 +28,54 @@ type ChatMessage = {
   content?: string | ChatMessagePart[]
 }
 
+function extractMessageText(message: ChatMessage): string {
+  const content = message.content
+  if (typeof content === "string") {
+    return content
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === "string") {
+          return part
+        }
+        if (part?.type === "text" && typeof part.text === "string") {
+          return part.text
+        }
+        return ""
+      })
+      .join("")
+  }
+  return ""
+}
+
 function lastUserText(messages: ChatMessage[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i]
     if (!message || message.role !== "user") {
       continue
     }
-    const content = message.content
-    if (typeof content === "string") {
-      return content
-    }
-    if (Array.isArray(content)) {
-      return content
-        .map((part) => {
-          if (typeof part === "string") {
-            return part
-          }
-          if (part?.type === "text" && typeof part.text === "string") {
-            return part.text
-          }
-          return ""
-        })
-        .join("")
-    }
+    return extractMessageText(message)
   }
   return ""
+}
+
+function toLangChainMessages(messages: ChatMessage[]) {
+  const result: Array<HumanMessage | AIMessage> = []
+  for (const message of messages) {
+    const text = extractMessageText(message).trim()
+    if (!text) {
+      continue
+    }
+    if (message.role === "user") {
+      result.push(new HumanMessage(text))
+      continue
+    }
+    if (message.role === "assistant") {
+      result.push(new AIMessage(text))
+    }
+  }
+  return result
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -69,6 +92,7 @@ export async function POST(request: Request, context: RouteContext) {
     }
 
     const body = (await request.json()) as { messages?: ChatMessage[] }
+    const langChainMessages = toLangChainMessages(body.messages ?? [])
     const question = lastUserText(body.messages ?? []).trim()
 
     if (!question) {
@@ -93,7 +117,10 @@ export async function POST(request: Request, context: RouteContext) {
 
       const events = workspaceRagGraph.streamEvents(
         {
-          messages: [new HumanMessage(question)],
+          messages:
+            langChainMessages.length > 0
+              ? langChainMessages
+              : [new HumanMessage(question)],
           workspaceId,
           sourceIds,
           instructions: workspace.instructions || undefined,
@@ -118,7 +145,8 @@ export async function POST(request: Request, context: RouteContext) {
         if (
           !streamed &&
           event.event === "on_chain_end" &&
-          event.metadata?.langgraph_node === "generate"
+          (event.metadata?.langgraph_node === "generate" ||
+            event.metadata?.langgraph_node === "generate_conversational")
         ) {
           const output = event.data?.output as
             | { messages?: unknown[] }

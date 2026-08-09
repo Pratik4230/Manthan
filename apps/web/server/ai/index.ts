@@ -10,6 +10,7 @@ export {
   type RagCitation,
 } from "@/server/ai/graph"
 export {
+  buildConversationalSystemPrompt,
   buildSystemPrompt,
   buildUserPromptWithContext,
   formatRetrievedContext,
