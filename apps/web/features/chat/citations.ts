@@ -10,6 +10,17 @@ export type CitationChip = {
 
 export const CITATIONS_DATA_NAME = "citations"
 
+const INLINE_CITATION_PATTERN = /\s*\[\d+\]/g
+
+export function stripInlineCitationMarkers(text: string): string {
+  return text
+    .replace(INLINE_CITATION_PATTERN, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/ \n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd()
+}
+
 export function formatCitationLoc(
   loc: Record<string, unknown> | null
 ): string | null {

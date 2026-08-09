@@ -6,6 +6,7 @@ import { toast } from "sonner"
 
 import { useSources } from "@/features/sources/hooks"
 import { artifactContentToMarkdown } from "@/features/studio/format"
+import { ArtifactOpenUIView } from "@/features/studio/openui/artifact-open-ui"
 import {
   useArtifacts,
   useCreateArtifact,
@@ -69,18 +70,7 @@ function ArtifactBody({
     )
   }
 
-  const markdown = artifactContentToMarkdown(artifact.type, artifact.content)
-  return (
-    <pre
-      className={
-        expanded
-          ? "whitespace-pre-wrap text-sm leading-relaxed"
-          : "max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border bg-muted/30 p-3 text-xs leading-relaxed"
-      }
-    >
-      {markdown || "No content"}
-    </pre>
-  )
+  return <ArtifactOpenUIView artifact={artifact} expanded={expanded} />
 }
 
 type ArtifactActionsProps = {

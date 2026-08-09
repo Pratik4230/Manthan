@@ -12,6 +12,7 @@ import remarkGfm from "remark-gfm";
 import { type FC, memo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 
+import { stripInlineCitationMarkers } from "@/features/chat/citations"
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@workspace/ui/lib/utils";
 
@@ -21,6 +22,7 @@ const MarkdownTextImpl = () => {
       remarkPlugins={[remarkGfm]}
       className="aui-md"
       components={defaultComponents}
+      preprocess={stripInlineCitationMarkers}
       defer
     />
   );

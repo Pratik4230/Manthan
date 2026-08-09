@@ -1,5 +1,5 @@
 export { getArtifactsCollection } from "@/server/artifacts/collection"
-export { generateArtifactContent, artifactContentToMarkdown } from "@/server/artifacts/generate"
+export { generateArtifactContent } from "@/server/artifacts/generate"
 export {
   createArtifact,
   deleteArtifact,
