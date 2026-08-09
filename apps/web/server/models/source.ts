@@ -47,6 +47,8 @@ export type SourceDocument = {
   imageKitFileId: string | null
   imageKitUrl: string | null
   url: string | null
+  youtubeVideoId: string | null
+  contentSha256: string | null
   extractedText: string | null
   ingestParsedSections: SourceIngestParsedSection[] | null
   summary: string | null

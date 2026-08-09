@@ -6,6 +6,11 @@ import {
   ALLOWED_MIME_TYPES,
 } from "@/server/models/source"
 
+const sourceDedupFields = {
+  forceDuplicate: z.boolean().optional(),
+  replaceSourceId: z.string().trim().optional(),
+}
+
 export const createFileSourceInputSchema = z.object({
   title: z.string().trim().min(1).max(200),
   fileName: z.string().trim().min(1).max(255),
@@ -18,6 +23,11 @@ export const createFileSourceInputSchema = z.object({
   imageKitFileId: z.string().trim().min(1),
   imageKitUrl: z.string().url(),
   extension: z.enum(ALLOWED_FILE_EXTENSIONS),
+  clientContentHash: z
+    .string()
+    .regex(/^[a-f0-9]{64}$/i, "Invalid content hash")
+    .optional(),
+  ...sourceDedupFields,
 })
 
 export type CreateFileSourceInput = z.infer<typeof createFileSourceInputSchema>
@@ -35,6 +45,7 @@ export const createWebSourceInputSchema = z.object({
       }
     }, "URL must start with http:// or https://"),
   title: z.string().trim().min(1).max(200).optional(),
+  ...sourceDedupFields,
 })
 
 export type CreateWebSourceInput = z.infer<typeof createWebSourceInputSchema>
@@ -45,6 +56,7 @@ export const createYoutubeSourceInputSchema = z.object({
     .trim()
     .refine((value) => isYoutubeUrl(value), "Enter a valid YouTube URL"),
   title: z.string().trim().min(1).max(200).optional(),
+  ...sourceDedupFields,
 })
 
 export type CreateYoutubeSourceInput = z.infer<

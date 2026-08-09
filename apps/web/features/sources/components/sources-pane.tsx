@@ -3,10 +3,14 @@
 import { useForm } from "@tanstack/react-form"
 import { upload } from "@imagekit/next"
 import { PlusIcon } from "lucide-react"
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "sonner"
 
 import { fetchUploadAuth } from "@/features/sources/api"
+import { DuplicateSourceDialog } from "@/features/sources/components/duplicate-source-dialog"
+import { SourceStatusBadge } from "@/features/sources/components/source-status-badge"
+import { isDuplicateSourceError } from "@/features/sources/errors"
+import { hashFileSha256 } from "@/features/sources/file-hash"
 import {
   ACCEPT_FILE_TYPES,
   getFileExtension,
@@ -25,7 +29,6 @@ import {
   addWebSourceSchema,
   addYoutubeSourceSchema,
 } from "@/features/sources/schemas"
-import { SourceStatusBadge } from "@/features/sources/components/source-status-badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Field,
@@ -44,6 +47,34 @@ import {
   SheetTrigger,
 } from "@workspace/ui/components/sheet"
 import { Skeleton } from "@workspace/ui/components/skeleton"
+import type { SourceDto } from "@/server/sources/service"
+import { cn } from "@workspace/ui/lib/utils"
+
+type PendingDuplicate =
+  | {
+      kind: "file"
+      existingSource: SourceDto
+      payload: {
+        title: string
+        fileName: string
+        fileSize: number
+        mimeType: string
+        imageKitFileId: string
+        imageKitUrl: string
+        extension: string
+        clientContentHash: string
+      }
+    }
+  | {
+      kind: "web"
+      existingSource: SourceDto
+      payload: { url: string }
+    }
+  | {
+      kind: "youtube"
+      existingSource: SourceDto
+      payload: { url: string }
+    }
 
 function sourceSubtitle(source: {
   type: string
@@ -56,7 +87,13 @@ function sourceSubtitle(source: {
   return source.url
 }
 
-function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
+function AddSourceSheet({
+  workspaceId,
+  onDuplicate,
+}: {
+  workspaceId: string
+  onDuplicate: (pending: PendingDuplicate) => void
+}) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [open, setOpen] = useState(false)
   const [progress, setProgress] = useState<number | null>(null)
@@ -77,6 +114,14 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
         webForm.reset()
         setOpen(false)
       } catch (err) {
+        if (isDuplicateSourceError(err)) {
+          onDuplicate({
+            kind: "web",
+            existingSource: err.existingSource,
+            payload: { url: value.url },
+          })
+          return
+        }
         toast.error(err instanceof Error ? err.message : "Failed to add URL")
       }
     },
@@ -94,6 +139,14 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
         youtubeForm.reset()
         setOpen(false)
       } catch (err) {
+        if (isDuplicateSourceError(err)) {
+          onDuplicate({
+            kind: "youtube",
+            existingSource: err.existingSource,
+            payload: { url: value.url },
+          })
+          return
+        }
         toast.error(
           err instanceof Error ? err.message : "Failed to add YouTube URL"
         )
@@ -122,8 +175,12 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
     setUploading(true)
     setProgress(0)
 
+    let uploadedFileId: string | null = null
+    let uploadedFileUrl: string | null = null
+
     try {
       const auth = await fetchUploadAuth()
+      const clientContentHash = await hashFileSha256(file)
       const result = await upload({
         file,
         fileName: file.name,
@@ -144,6 +201,9 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
         throw new Error("Upload succeeded but file metadata is missing")
       }
 
+      uploadedFileId = result.fileId
+      uploadedFileUrl = result.url
+
       await createSource.mutateAsync({
         title: file.name.replace(/\.[^.]+$/, "") || file.name,
         fileName: file.name,
@@ -152,11 +212,30 @@ function AddSourceSheet({ workspaceId }: { workspaceId: string }) {
         imageKitFileId: result.fileId,
         imageKitUrl: result.url,
         extension,
+        clientContentHash,
       })
 
       toast.success("File uploaded")
       setOpen(false)
     } catch (err) {
+      if (isDuplicateSourceError(err) && uploadedFileId && uploadedFileUrl) {
+        const clientContentHash = await hashFileSha256(file)
+        onDuplicate({
+          kind: "file",
+          existingSource: err.existingSource,
+          payload: {
+            title: file.name.replace(/\.[^.]+$/, "") || file.name,
+            fileName: file.name,
+            fileSize: file.size,
+            mimeType,
+            imageKitFileId: uploadedFileId,
+            imageKitUrl: uploadedFileUrl,
+            extension,
+            clientContentHash,
+          },
+        })
+        return
+      }
       toast.error(err instanceof Error ? err.message : "Upload failed")
     } finally {
       setUploading(false)
@@ -308,10 +387,109 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
   const { data, isLoading, isError, error, refetch } = useSources(workspaceId)
   const deleteSource = useDeleteSource(workspaceId)
   const retrySource = useRetrySource(workspaceId)
+  const createFileSource = useCreateFileSource(workspaceId)
+  const createWebSource = useCreateWebSource(workspaceId)
+  const createYoutubeSource = useCreateYoutubeSource(workspaceId)
+  const [pendingDuplicate, setPendingDuplicate] =
+    useState<PendingDuplicate | null>(null)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
+  const [duplicatePending, setDuplicatePending] = useState(false)
+  const [highlightSourceId, setHighlightSourceId] = useState<string | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (!highlightSourceId) {
+      return
+    }
+    const element = document.getElementById(`source-${highlightSourceId}`)
+    element?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+    const timeout = window.setTimeout(() => setHighlightSourceId(null), 3000)
+    return () => window.clearTimeout(timeout)
+  }, [highlightSourceId, data])
+
+  function handleDuplicate(pending: PendingDuplicate) {
+    setPendingDuplicate(pending)
+    setDuplicateOpen(true)
+  }
+
+  async function resolveDuplicate(
+    action: "open" | "replace" | "anyway"
+  ): Promise<void> {
+    if (!pendingDuplicate) {
+      return
+    }
+
+    if (action === "open") {
+      setHighlightSourceId(pendingDuplicate.existingSource.id)
+      setDuplicateOpen(false)
+      setPendingDuplicate(null)
+      return
+    }
+
+    setDuplicatePending(true)
+    try {
+      const options =
+        action === "replace"
+          ? { replaceSourceId: pendingDuplicate.existingSource.id }
+          : { forceDuplicate: true }
+
+      if (pendingDuplicate.kind === "file") {
+        await createFileSource.mutateAsync({
+          ...pendingDuplicate.payload,
+          ...options,
+        })
+        toast.success(
+          action === "replace" ? "Source replaced" : "Duplicate source added"
+        )
+      } else if (pendingDuplicate.kind === "web") {
+        await createWebSource.mutateAsync({
+          ...pendingDuplicate.payload,
+          ...options,
+        })
+        toast.success(
+          action === "replace" ? "Source re-indexed" : "Duplicate source added"
+        )
+      } else {
+        await createYoutubeSource.mutateAsync({
+          ...pendingDuplicate.payload,
+          ...options,
+        })
+        toast.success(
+          action === "replace" ? "Source re-indexed" : "Duplicate source added"
+        )
+      }
+
+      setDuplicateOpen(false)
+      setPendingDuplicate(null)
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to resolve duplicate"
+      )
+    } finally {
+      setDuplicatePending(false)
+    }
+  }
 
   return (
     <div className="flex h-full flex-col gap-2">
-      <AddSourceSheet workspaceId={workspaceId} />
+      <AddSourceSheet workspaceId={workspaceId} onDuplicate={handleDuplicate} />
+
+      <DuplicateSourceDialog
+        open={duplicateOpen}
+        onOpenChange={(open) => {
+          setDuplicateOpen(open)
+          if (!open) {
+            setPendingDuplicate(null)
+          }
+        }}
+        existingSource={pendingDuplicate?.existingSource ?? null}
+        kind={pendingDuplicate?.kind ?? null}
+        pending={duplicatePending}
+        onOpenExisting={() => void resolveDuplicate("open")}
+        onReplace={() => void resolveDuplicate("replace")}
+        onAddAnyway={() => void resolveDuplicate("anyway")}
+      />
 
       {isLoading ? (
         <div className="space-y-2">
@@ -342,7 +520,15 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
           const canRetry =
             source.status === "failed" || source.status === "ready"
           return (
-            <li key={source.id} className="rounded-lg border p-2">
+            <li
+              key={source.id}
+              id={`source-${source.id}`}
+              className={cn(
+                "rounded-lg border p-2 transition-colors",
+                highlightSourceId === source.id &&
+                  "border-emerald-500 ring-2 ring-emerald-500/40"
+              )}
+            >
               <div className="space-y-1.5">
                 <p className="truncate text-xs font-medium leading-snug">
                   {source.title}

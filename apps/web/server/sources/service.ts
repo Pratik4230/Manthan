@@ -14,7 +14,14 @@ import {
   canonicalYoutubeUrl,
   extractYoutubeVideoId,
 } from "@/lib/youtube-url"
+import { normalizeWebUrl } from "@/lib/normalize-web-url"
 import { getWorkspace } from "@/server/workspaces/service"
+import {
+  assertNoDuplicateOrThrow,
+  findDuplicateFileSource,
+  findDuplicateWebSource,
+  findDuplicateYoutubeSource,
+} from "@/server/sources/duplicate"
 
 export type SourceDto = {
   id: string
@@ -76,6 +83,149 @@ async function assertWorkspaceOwner(ownerId: string, workspaceId: string) {
   return workspace
 }
 
+async function queueSourceIngest(input: {
+  sourceId: string
+  workspaceId: string
+  ownerId: string
+  sourceType: Source["type"]
+}) {
+  await inngest.send({
+    name: "source/ingest.requested",
+    data: input,
+  })
+}
+
+async function getOwnedSource(
+  ownerId: string,
+  workspaceId: string,
+  sourceId: string
+): Promise<Source | null> {
+  if (!ObjectId.isValid(sourceId)) {
+    return null
+  }
+
+  const collection = await getSourcesCollection()
+  const source = await collection.findOne({
+    _id: new ObjectId(sourceId),
+    workspaceId,
+    ownerId,
+  })
+
+  return source ? (source as Source) : null
+}
+
+async function replaceFileSource(
+  ownerId: string,
+  workspaceId: string,
+  sourceId: string,
+  input: CreateFileSourceInput
+): Promise<SourceDto> {
+  const source = await getOwnedSource(ownerId, workspaceId, sourceId)
+  if (!source || source.type !== "file") {
+    throw new Response(JSON.stringify({ error: "Source not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  if (source.status === "processing" || source.status === "pending") {
+    throw new Response(
+      JSON.stringify({ error: "Source ingest is already in progress" }),
+      {
+        status: 409,
+        headers: { "Content-Type": "application/json" },
+      }
+    )
+  }
+
+  if (
+    source.imageKitFileId &&
+    source.imageKitFileId !== input.imageKitFileId
+  ) {
+    try {
+      await deleteImageKitFile(source.imageKitFileId)
+    } catch {
+      void 0
+    }
+  }
+
+  const collection = await getSourcesCollection()
+  const now = new Date()
+
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId), workspaceId, ownerId },
+    {
+      $set: {
+        title: input.title,
+        status: "pending",
+        ingestStage: "queued",
+        error: null,
+        mimeType: input.mimeType,
+        fileName: input.fileName,
+        fileSize: input.fileSize,
+        imageKitFileId: input.imageKitFileId,
+        imageKitUrl: input.imageKitUrl,
+        contentSha256: input.clientContentHash ?? null,
+        extractedText: null,
+        ingestParsedSections: null,
+        summary: null,
+        updatedAt: now,
+      },
+    }
+  )
+
+  await queueSourceIngest({
+    sourceId,
+    workspaceId,
+    ownerId,
+    sourceType: "file",
+  })
+
+  const updated = await collection.findOne({ _id: new ObjectId(sourceId) })
+  if (!updated) {
+    throw new Response(JSON.stringify({ error: "Source not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  return toDto(updated as Source)
+}
+
+async function replaceUrlSource(
+  ownerId: string,
+  workspaceId: string,
+  sourceId: string,
+  input: { title?: string }
+): Promise<SourceDto> {
+  const replaced = await retrySourceIngest(ownerId, workspaceId, sourceId)
+  if (!replaced) {
+    throw new Response(JSON.stringify({ error: "Source not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    })
+  }
+
+  const title = input.title?.trim()
+  if (!title) {
+    return replaced
+  }
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId), workspaceId, ownerId },
+    {
+      $set: {
+        title,
+        updatedAt: new Date(),
+      },
+    }
+  )
+
+  const updated = await collection.findOne({ _id: new ObjectId(sourceId) })
+  return updated ? toDto(updated as Source) : replaced
+}
+
 export async function createFileSource(
   ownerId: string,
   workspaceId: string,
@@ -87,6 +237,19 @@ export async function createFileSource(
       status: 404,
       headers: { "Content-Type": "application/json" },
     })
+  }
+
+  if (input.replaceSourceId) {
+    return replaceFileSource(ownerId, workspaceId, input.replaceSourceId, input)
+  }
+
+  if (input.clientContentHash && !input.forceDuplicate) {
+    const duplicate = await findDuplicateFileSource(
+      workspaceId,
+      ownerId,
+      input.clientContentHash
+    )
+    await assertNoDuplicateOrThrow(duplicate)
   }
 
   const collection = await getSourcesCollection()
@@ -107,6 +270,8 @@ export async function createFileSource(
     imageKitFileId: input.imageKitFileId,
     imageKitUrl: input.imageKitUrl,
     url: null,
+    youtubeVideoId: null,
+    contentSha256: input.clientContentHash ?? null,
     extractedText: null,
     ingestParsedSections: null,
     summary: null,
@@ -117,14 +282,11 @@ export async function createFileSource(
   const result = await collection.insertOne(doc)
   const sourceId = result.insertedId.toHexString()
 
-  await inngest.send({
-    name: "source/ingest.requested",
-    data: {
-      sourceId,
-      workspaceId,
-      ownerId,
-      sourceType: "file",
-    },
+  await queueSourceIngest({
+    sourceId,
+    workspaceId,
+    ownerId,
+    sourceType: "file",
   })
 
   return toDto({
@@ -155,7 +317,46 @@ export async function createWebSource(
     })
   }
 
-  const normalizedUrl = new URL(input.url).toString()
+  const normalizedUrl = normalizeWebUrl(input.url)
+
+  if (input.replaceSourceId) {
+    const existing = await getOwnedSource(
+      ownerId,
+      workspaceId,
+      input.replaceSourceId
+    )
+    if (!existing || existing.type !== "web") {
+      throw new Response(JSON.stringify({ error: "Source not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const collection = await getSourcesCollection()
+    await collection.updateOne(
+      { _id: new ObjectId(input.replaceSourceId), workspaceId, ownerId },
+      {
+        $set: {
+          url: normalizedUrl,
+          updatedAt: new Date(),
+        },
+      }
+    )
+
+    return replaceUrlSource(ownerId, workspaceId, input.replaceSourceId, {
+      title: input.title,
+    })
+  }
+
+  if (!input.forceDuplicate) {
+    const duplicate = await findDuplicateWebSource(
+      workspaceId,
+      ownerId,
+      normalizedUrl
+    )
+    await assertNoDuplicateOrThrow(duplicate)
+  }
+
   const collection = await getSourcesCollection()
   const now = new Date()
 
@@ -174,6 +375,8 @@ export async function createWebSource(
     imageKitFileId: null,
     imageKitUrl: null,
     url: normalizedUrl,
+    youtubeVideoId: null,
+    contentSha256: null,
     extractedText: null,
     ingestParsedSections: null,
     summary: null,
@@ -184,14 +387,11 @@ export async function createWebSource(
   const result = await collection.insertOne(doc)
   const sourceId = result.insertedId.toHexString()
 
-  await inngest.send({
-    name: "source/ingest.requested",
-    data: {
-      sourceId,
-      workspaceId,
-      ownerId,
-      sourceType: "web",
-    },
+  await queueSourceIngest({
+    sourceId,
+    workspaceId,
+    ownerId,
+    sourceType: "web",
   })
 
   return toDto({
@@ -222,6 +422,46 @@ export async function createYoutubeSource(
   }
 
   const normalizedUrl = canonicalYoutubeUrl(videoId)
+
+  if (input.replaceSourceId) {
+    const existing = await getOwnedSource(
+      ownerId,
+      workspaceId,
+      input.replaceSourceId
+    )
+    if (!existing || existing.type !== "youtube") {
+      throw new Response(JSON.stringify({ error: "Source not found" }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" },
+      })
+    }
+
+    const collection = await getSourcesCollection()
+    await collection.updateOne(
+      { _id: new ObjectId(input.replaceSourceId), workspaceId, ownerId },
+      {
+        $set: {
+          url: normalizedUrl,
+          youtubeVideoId: videoId,
+          updatedAt: new Date(),
+        },
+      }
+    )
+
+    return replaceUrlSource(ownerId, workspaceId, input.replaceSourceId, {
+      title: input.title,
+    })
+  }
+
+  if (!input.forceDuplicate) {
+    const duplicate = await findDuplicateYoutubeSource(
+      workspaceId,
+      ownerId,
+      videoId
+    )
+    await assertNoDuplicateOrThrow(duplicate)
+  }
+
   const collection = await getSourcesCollection()
   const now = new Date()
 
@@ -240,6 +480,8 @@ export async function createYoutubeSource(
     imageKitFileId: null,
     imageKitUrl: null,
     url: normalizedUrl,
+    youtubeVideoId: videoId,
+    contentSha256: null,
     extractedText: null,
     ingestParsedSections: null,
     summary: null,
@@ -250,14 +492,11 @@ export async function createYoutubeSource(
   const result = await collection.insertOne(doc)
   const sourceId = result.insertedId.toHexString()
 
-  await inngest.send({
-    name: "source/ingest.requested",
-    data: {
-      sourceId,
-      workspaceId,
-      ownerId,
-      sourceType: "youtube",
-    },
+  await queueSourceIngest({
+    sourceId,
+    workspaceId,
+    ownerId,
+    sourceType: "youtube",
   })
 
   return toDto({
@@ -412,6 +651,26 @@ export async function setIngestStage(sourceId: string, ingestStage: IngestStage)
   )
 }
 
+export async function saveSourceContentSha256(
+  sourceId: string,
+  contentSha256: string
+) {
+  if (!ObjectId.isValid(sourceId)) {
+    return
+  }
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: {
+        contentSha256,
+        updatedAt: new Date(),
+      },
+    }
+  )
+}
+
 export async function saveIngestExtractedContent(
   sourceId: string,
   input: {
@@ -527,14 +786,11 @@ export async function retrySourceIngest(
     }
   )
 
-  await inngest.send({
-    name: "source/ingest.requested",
-    data: {
-      sourceId,
-      workspaceId,
-      ownerId,
-      sourceType: source.type,
-    },
+  await queueSourceIngest({
+    sourceId,
+    workspaceId,
+    ownerId,
+    sourceType: source.type,
   })
 
   const updated = await collection.findOne({ _id: new ObjectId(sourceId) })

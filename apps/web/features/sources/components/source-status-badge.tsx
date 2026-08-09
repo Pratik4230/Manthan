@@ -60,7 +60,7 @@ function statusPresentation(source: SourceStatusBadgeSource): StatusPresentation
       label,
       active: true,
       className:
-        "border-amber-500/55 bg-amber-500/12 text-amber-900 shadow-[0_0_14px_-2px] shadow-amber-500/35 dark:text-amber-200",
+        "border-zinc-400/60 bg-zinc-500/12 text-zinc-800 shadow-[0_0_12px_-2px] shadow-zinc-400/30 dark:text-zinc-200",
     }
   }
 
@@ -122,7 +122,7 @@ function statusPresentation(source: SourceStatusBadgeSource): StatusPresentation
     label,
     active: source.status === "processing",
     className:
-      "border-primary/50 bg-primary/10 text-primary shadow-[0_0_12px_-2px] shadow-primary/30",
+      "border-sky-500/55 bg-sky-500/12 text-sky-900 shadow-[0_0_12px_-2px] shadow-sky-500/35 dark:text-sky-200",
   }
 }
 

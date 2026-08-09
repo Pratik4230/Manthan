@@ -1,3 +1,4 @@
+import { hashBufferSha256 } from "@/lib/content-hash"
 import { chunkParsedDocument, chunkPlainText } from "@/server/ingest/chunk"
 import type { SourceChunk } from "@/server/ingest/chunk"
 import { upsertSourceChunks } from "@/server/ingest/embed"
@@ -18,9 +19,11 @@ import type { Source } from "@/server/models/source"
 import {
   getSourceById,
   saveIngestExtractedContent,
+  saveSourceContentSha256,
   setIngestStage,
   setSourceReady,
 } from "@/server/sources/service"
+import { findDuplicateFileSource } from "@/server/sources/duplicate"
 
 function toParsedDocument(source: Source): ParsedDocument | null {
   if (!source.ingestParsedSections || source.ingestParsedSections.length === 0) {
@@ -56,6 +59,21 @@ export async function extractSourceContent(sourceId: string): Promise<{
 
     await setIngestStage(sourceId, "downloading")
     const bytes = await downloadImageKitFile(source.imageKitUrl)
+
+    const contentSha256 = hashBufferSha256(bytes)
+    const duplicate = await findDuplicateFileSource(
+      source.workspaceId,
+      source.ownerId,
+      contentSha256,
+      sourceId
+    )
+    if (duplicate) {
+      throw new Error(
+        "This file already exists in this workspace as another source."
+      )
+    }
+
+    await saveSourceContentSha256(sourceId, contentSha256)
 
     await setIngestStage(sourceId, "parsing")
     const parsed = await parseFileBuffer(bytes, extension)

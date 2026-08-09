@@ -1,4 +1,11 @@
+import { DuplicateSourceError } from "@/features/sources/errors"
 import type { SourceDto } from "@/server/sources/service"
+
+type ApiErrorBody = {
+  error?: string
+  message?: string
+  existingSource?: SourceDto
+}
 
 async function parseJson<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") ?? ""
@@ -9,11 +16,27 @@ async function parseJson<T>(response: Response): Promise<T> {
         : `Request failed (${response.status})`
     )
   }
-  const data = (await response.json()) as T & { error?: string }
-  if (!response.ok) {
-    throw new Error(data.error ?? "Request failed")
+
+  const data = (await response.json()) as T & ApiErrorBody
+
+  if (
+    response.status === 409 &&
+    data.error === "duplicate_source" &&
+    data.existingSource
+  ) {
+    throw new DuplicateSourceError(data.existingSource)
   }
+
+  if (!response.ok) {
+    throw new Error(data.error ?? data.message ?? "Request failed")
+  }
+
   return data
+}
+
+export type SourceDedupOptions = {
+  forceDuplicate?: boolean
+  replaceSourceId?: string
 }
 
 export async function fetchUploadAuth() {
@@ -42,7 +65,8 @@ export async function createFileSourceRequest(
     imageKitFileId: string
     imageKitUrl: string
     extension: string
-  }
+    clientContentHash?: string
+  } & SourceDedupOptions
 ): Promise<SourceDto> {
   const data = await parseJson<{ source: SourceDto }>(
     await fetch(`/api/workspaces/${workspaceId}/sources`, {
@@ -56,7 +80,7 @@ export async function createFileSourceRequest(
 
 export async function createWebSourceRequest(
   workspaceId: string,
-  input: { url: string; title?: string }
+  input: { url: string; title?: string } & SourceDedupOptions
 ): Promise<SourceDto> {
   const data = await parseJson<{ source: SourceDto }>(
     await fetch(`/api/workspaces/${workspaceId}/sources/web`, {
@@ -70,7 +94,7 @@ export async function createWebSourceRequest(
 
 export async function createYoutubeSourceRequest(
   workspaceId: string,
-  input: { url: string; title?: string }
+  input: { url: string; title?: string } & SourceDedupOptions
 ): Promise<SourceDto> {
   const data = await parseJson<{ source: SourceDto }>(
     await fetch(`/api/workspaces/${workspaceId}/sources/youtube`, {

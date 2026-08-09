@@ -28,8 +28,16 @@ async function createIndexes() {
       { name: "workspaceId_createdAt" }
     ),
     sources.createIndex(
-      { workspaceId: 1, ownerId: 1 },
-      { name: "workspaceId_ownerId" }
+      { workspaceId: 1, ownerId: 1, url: 1, type: 1 },
+      { name: "workspace_owner_url_type" }
+    ),
+    sources.createIndex(
+      { workspaceId: 1, ownerId: 1, contentSha256: 1 },
+      { name: "workspace_owner_contentSha256", sparse: true }
+    ),
+    sources.createIndex(
+      { workspaceId: 1, ownerId: 1, youtubeVideoId: 1 },
+      { name: "workspace_owner_youtubeVideoId", sparse: true }
     ),
     chunks.createIndex(
       { workspaceId: 1, sourceId: 1 },
