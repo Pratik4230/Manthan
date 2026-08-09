@@ -25,7 +25,7 @@ import {
   addWebSourceSchema,
   addYoutubeSourceSchema,
 } from "@/features/sources/schemas"
-import { Badge } from "@workspace/ui/components/badge"
+import { SourceStatusBadge } from "@/features/sources/components/source-status-badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   Field,
@@ -44,23 +44,6 @@ import {
   SheetTrigger,
 } from "@workspace/ui/components/sheet"
 import { Skeleton } from "@workspace/ui/components/skeleton"
-
-function statusLabel(status: string) {
-  if (status === "pending") return "Queued"
-  if (status === "processing") return "Processing"
-  if (status === "ready") return "Ready"
-  if (status === "failed") return "Failed"
-  return status
-}
-
-function statusVariant(
-  status: string
-): "secondary" | "default" | "outline" | "destructive" {
-  if (status === "ready") return "default"
-  if (status === "failed") return "destructive"
-  if (status === "processing") return "secondary"
-  return "outline"
-}
 
 function sourceSubtitle(source: {
   type: string
@@ -364,12 +347,7 @@ export function SourcesPane({ workspaceId }: { workspaceId: string }) {
                 <p className="truncate text-xs font-medium leading-snug">
                   {source.title}
                 </p>
-                <Badge
-                  variant={statusVariant(source.status)}
-                  className="text-[10px]"
-                >
-                  {statusLabel(source.status)}
-                </Badge>
+                <SourceStatusBadge source={source} />
                 {source.error ? (
                   <p className="text-[10px] text-destructive">{source.error}</p>
                 ) : null}

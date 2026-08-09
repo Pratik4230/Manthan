@@ -1,11 +1,12 @@
 import { chunkParsedDocument, chunkPlainText } from "@/server/ingest/chunk"
+import type { SourceChunk } from "@/server/ingest/chunk"
 import { upsertSourceChunks } from "@/server/ingest/embed"
-import { saveExtractedText } from "@/server/ingest/finalize"
 import {
   extensionFromFileName,
   extensionFromMimeType,
   parseFileBuffer,
 } from "@/server/ingest/parse"
+import type { ParsedDocument } from "@/server/ingest/parse"
 import {
   generateSourceSummary,
   refreshWorkspaceSummary,
@@ -14,72 +15,169 @@ import { scrapeWebPage } from "@/server/integrations/firecrawl"
 import { downloadImageKitFile } from "@/server/integrations/imagekit"
 import { fetchYoutubeTranscriptText } from "@/server/integrations/youtube"
 import type { Source } from "@/server/models/source"
-import { getSourceById, setSourceReady } from "@/server/sources/service"
+import {
+  getSourceById,
+  saveIngestExtractedContent,
+  setIngestStage,
+  setSourceReady,
+} from "@/server/sources/service"
 
-async function ingestFileSource(source: Source): Promise<{
-  chunkCount: number
-  text: string
-}> {
-  if (!source.imageKitUrl) {
-    throw new Error("Source file URL missing")
+function toParsedDocument(source: Source): ParsedDocument | null {
+  if (!source.ingestParsedSections || source.ingestParsedSections.length === 0) {
+    return null
   }
 
-  const extension =
-    (source.fileName ? extensionFromFileName(source.fileName) : null) ??
-    extensionFromMimeType(source.mimeType)
-
-  if (!extension) {
-    throw new Error("Unsupported or unknown file type")
+  return {
+    text: source.extractedText ?? "",
+    sections: source.ingestParsedSections,
   }
-
-  const bytes = await downloadImageKitFile(source.imageKitUrl)
-  const parsed = await parseFileBuffer(bytes, extension)
-  await saveExtractedText(source._id.toHexString(), parsed.text)
-  const chunks = await chunkParsedDocument(parsed)
-  const result = await upsertSourceChunks({
-    workspaceId: source.workspaceId,
-    sourceId: source._id.toHexString(),
-    chunks,
-  })
-  return { chunkCount: result.count, text: parsed.text }
 }
 
-async function ingestWebSource(source: Source): Promise<{
-  chunkCount: number
+export async function extractSourceContent(sourceId: string): Promise<{
   text: string
 }> {
-  if (!source.url) {
-    throw new Error("Source URL missing")
+  const source = await getSourceById(sourceId)
+  if (!source) {
+    throw new Error("Source not found")
   }
 
-  const text = await scrapeWebPage(source.url)
-  await saveExtractedText(source._id.toHexString(), text)
-  const chunks = await chunkPlainText(text)
-  const result = await upsertSourceChunks({
-    workspaceId: source.workspaceId,
-    sourceId: source._id.toHexString(),
-    chunks,
-  })
-  return { chunkCount: result.count, text }
+  if (source.type === "file") {
+    if (!source.imageKitUrl) {
+      throw new Error("Source file URL missing")
+    }
+
+    const extension =
+      (source.fileName ? extensionFromFileName(source.fileName) : null) ??
+      extensionFromMimeType(source.mimeType)
+
+    if (!extension) {
+      throw new Error("Unsupported or unknown file type")
+    }
+
+    await setIngestStage(sourceId, "downloading")
+    const bytes = await downloadImageKitFile(source.imageKitUrl)
+
+    await setIngestStage(sourceId, "parsing")
+    const parsed = await parseFileBuffer(bytes, extension)
+    await saveIngestExtractedContent(sourceId, {
+      text: parsed.text,
+      ingestParsedSections: parsed.sections,
+    })
+
+    return { text: parsed.text }
+  }
+
+  await setIngestStage(sourceId, "parsing")
+
+  if (source.type === "web") {
+    if (!source.url) {
+      throw new Error("Source URL missing")
+    }
+
+    const text = await scrapeWebPage(source.url)
+    await saveIngestExtractedContent(sourceId, {
+      text,
+      ingestParsedSections: null,
+    })
+    return { text }
+  }
+
+  if (source.type === "youtube") {
+    if (!source.url) {
+      throw new Error("Source URL missing")
+    }
+
+    const text = await fetchYoutubeTranscriptText(source.url)
+    await saveIngestExtractedContent(sourceId, {
+      text,
+      ingestParsedSections: null,
+    })
+    return { text }
+  }
+
+  throw new Error(`Unsupported source type: ${source.type}`)
 }
 
-async function ingestYoutubeSource(source: Source): Promise<{
-  chunkCount: number
-  text: string
-}> {
-  if (!source.url) {
-    throw new Error("Source URL missing")
+async function buildSourceChunks(source: Source): Promise<SourceChunk[]> {
+  const parsed = toParsedDocument(source)
+  if (parsed) {
+    return chunkParsedDocument(parsed)
   }
 
-  const text = await fetchYoutubeTranscriptText(source.url)
-  await saveExtractedText(source._id.toHexString(), text)
-  const chunks = await chunkPlainText(text)
+  const text = source.extractedText?.trim()
+  if (!text) {
+    throw new Error("Extracted text is missing")
+  }
+
+  return chunkPlainText(text)
+}
+
+export async function chunkSourceContent(sourceId: string): Promise<SourceChunk[]> {
+  const source = await getSourceById(sourceId)
+  if (!source) {
+    throw new Error("Source not found")
+  }
+
+  await setIngestStage(sourceId, "chunking")
+  return buildSourceChunks(source)
+}
+
+export async function embedSourceContent(sourceId: string): Promise<{
+  chunkCount: number
+}> {
+  const source = await getSourceById(sourceId)
+  if (!source) {
+    throw new Error("Source not found")
+  }
+
+  const chunks = await buildSourceChunks(source)
+
+  await setIngestStage(sourceId, "embedding")
+
   const result = await upsertSourceChunks({
     workspaceId: source.workspaceId,
-    sourceId: source._id.toHexString(),
+    sourceId,
     chunks,
   })
-  return { chunkCount: result.count, text }
+
+  return { chunkCount: result.count }
+}
+
+export async function summarizeSourceContent(
+  sourceId: string,
+  text: string
+): Promise<string | null> {
+  const source = await getSourceById(sourceId)
+  if (!source) {
+    throw new Error("Source not found")
+  }
+
+  await setIngestStage(sourceId, "summarizing")
+
+  try {
+    return await generateSourceSummary(source.title, text)
+  } catch {
+    return null
+  }
+}
+
+export async function finalizeSourceIngest(
+  sourceId: string,
+  summary: string | null
+): Promise<void> {
+  const source = await getSourceById(sourceId)
+  if (!source) {
+    throw new Error("Source not found")
+  }
+
+  await setIngestStage(sourceId, "indexing")
+  await setSourceReady(sourceId, summary)
+
+  try {
+    await refreshWorkspaceSummary(source.workspaceId, source.ownerId)
+  } catch {
+    void 0
+  }
 }
 
 export async function runSourceIngest(sourceId: string): Promise<{
@@ -92,38 +190,15 @@ export async function runSourceIngest(sourceId: string): Promise<{
     throw new Error("Source not found")
   }
 
-  let chunkCount = 0
-  let text = ""
-  if (source.type === "file") {
-    const result = await ingestFileSource(source)
-    chunkCount = result.chunkCount
-    text = result.text
-  } else if (source.type === "web") {
-    const result = await ingestWebSource(source)
-    chunkCount = result.chunkCount
-    text = result.text
-  } else if (source.type === "youtube") {
-    const result = await ingestYoutubeSource(source)
-    chunkCount = result.chunkCount
-    text = result.text
-  } else {
-    throw new Error(`Unsupported source type: ${source.type}`)
+  const extracted = await extractSourceContent(sourceId)
+  const chunks = await chunkSourceContent(sourceId)
+  const embedded = await embedSourceContent(sourceId)
+  const summary = await summarizeSourceContent(sourceId, extracted.text)
+  await finalizeSourceIngest(sourceId, summary)
+
+  return {
+    chunkCount: embedded.chunkCount,
+    sourceType: source.type,
+    summary,
   }
-
-  let summary: string | null = null
-  try {
-    summary = await generateSourceSummary(source.title, text)
-  } catch {
-    summary = null
-  }
-
-  await setSourceReady(sourceId, summary)
-
-  try {
-    await refreshWorkspaceSummary(source.workspaceId, source.ownerId)
-  } catch {
-    void 0
-  }
-
-  return { chunkCount, sourceType: source.type, summary }
 }

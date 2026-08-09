@@ -7,9 +7,30 @@ export const SOURCE_STATUSES = [
 
 export type SourceStatus = (typeof SOURCE_STATUSES)[number]
 
+export const INGEST_STAGES = [
+  "queued",
+  "downloading",
+  "parsing",
+  "chunking",
+  "embedding",
+  "summarizing",
+  "indexing",
+] as const
+
+export type IngestStage = (typeof INGEST_STAGES)[number]
+
 export const SOURCE_TYPES = ["file", "youtube", "web"] as const
 
 export type SourceType = (typeof SOURCE_TYPES)[number]
+
+export type SourceIngestParsedSection = {
+  text: string
+  loc: {
+    page?: number
+    sheet?: string
+    sectionIndex?: number
+  }
+}
 
 export type SourceDocument = {
   workspaceId: string
@@ -17,6 +38,7 @@ export type SourceDocument = {
   type: SourceType
   title: string
   status: SourceStatus
+  ingestStage: IngestStage | null
   error: string | null
   enabled: boolean
   mimeType: string | null
@@ -26,6 +48,7 @@ export type SourceDocument = {
   imageKitUrl: string | null
   url: string | null
   extractedText: string | null
+  ingestParsedSections: SourceIngestParsedSection[] | null
   summary: string | null
   createdAt: Date
   updatedAt: Date

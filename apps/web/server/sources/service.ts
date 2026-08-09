@@ -1,7 +1,7 @@
 import { ObjectId } from "mongodb"
 
 import { inngest } from "@/server/inngest/client"
-import type { Source } from "@/server/models/source"
+import type { IngestStage, Source } from "@/server/models/source"
 import { deleteSourceChunks } from "@/server/ingest/embed"
 import { getSourcesCollection } from "@/server/sources/collection"
 import type {
@@ -23,6 +23,15 @@ export type SourceDto = {
   type: "file" | "youtube" | "web"
   title: string
   status: "pending" | "processing" | "ready" | "failed"
+  ingestStage:
+    | "queued"
+    | "downloading"
+    | "parsing"
+    | "chunking"
+    | "embedding"
+    | "summarizing"
+    | "indexing"
+    | null
   error: string | null
   enabled: boolean
   mimeType: string | null
@@ -44,6 +53,7 @@ function toDto(source: Source): SourceDto {
     type: source.type,
     title: source.title,
     status: source.status,
+    ingestStage: source.ingestStage ?? null,
     error: source.error,
     enabled: source.enabled,
     mimeType: source.mimeType,
@@ -88,6 +98,7 @@ export async function createFileSource(
     type: "file" as const,
     title: input.title,
     status: "pending" as const,
+    ingestStage: "queued" as const,
     error: null,
     enabled: true,
     mimeType: input.mimeType,
@@ -97,6 +108,7 @@ export async function createFileSource(
     imageKitUrl: input.imageKitUrl,
     url: null,
     extractedText: null,
+    ingestParsedSections: null,
     summary: null,
     createdAt: now,
     updatedAt: now,
@@ -153,6 +165,7 @@ export async function createWebSource(
     type: "web" as const,
     title: input.title?.trim() || titleFromUrl(normalizedUrl),
     status: "pending" as const,
+    ingestStage: "queued" as const,
     error: null,
     enabled: true,
     mimeType: "text/html",
@@ -162,6 +175,7 @@ export async function createWebSource(
     imageKitUrl: null,
     url: normalizedUrl,
     extractedText: null,
+    ingestParsedSections: null,
     summary: null,
     createdAt: now,
     updatedAt: now,
@@ -217,6 +231,7 @@ export async function createYoutubeSource(
     type: "youtube" as const,
     title: input.title?.trim() || `YouTube ${videoId}`,
     status: "pending" as const,
+    ingestStage: "queued" as const,
     error: null,
     enabled: true,
     mimeType: "video/youtube",
@@ -226,6 +241,7 @@ export async function createYoutubeSource(
     imageKitUrl: null,
     url: normalizedUrl,
     extractedText: null,
+    ingestParsedSections: null,
     summary: null,
     createdAt: now,
     updatedAt: now,
@@ -361,12 +377,77 @@ export async function setSourceStatus(
   }
 
   const collection = await getSourcesCollection()
+  const update: Record<string, unknown> = {
+    status,
+    error,
+    updatedAt: new Date(),
+  }
+
+  if (status === "failed") {
+    update.ingestParsedSections = null
+  }
+
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: update,
+    }
+  )
+}
+
+export async function setIngestStage(sourceId: string, ingestStage: IngestStage) {
+  if (!ObjectId.isValid(sourceId)) {
+    return
+  }
+
+  const collection = await getSourcesCollection()
   await collection.updateOne(
     { _id: new ObjectId(sourceId) },
     {
       $set: {
-        status,
-        error,
+        ingestStage,
+        updatedAt: new Date(),
+      },
+    }
+  )
+}
+
+export async function saveIngestExtractedContent(
+  sourceId: string,
+  input: {
+    text: string
+    ingestParsedSections: Source["ingestParsedSections"]
+  }
+) {
+  if (!ObjectId.isValid(sourceId)) {
+    return
+  }
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: {
+        extractedText: input.text,
+        ingestParsedSections: input.ingestParsedSections,
+        updatedAt: new Date(),
+      },
+    }
+  )
+}
+
+export async function clearIngestWorkingState(sourceId: string) {
+  if (!ObjectId.isValid(sourceId)) {
+    return
+  }
+
+  const collection = await getSourcesCollection()
+  await collection.updateOne(
+    { _id: new ObjectId(sourceId) },
+    {
+      $set: {
+        ingestStage: null,
+        ingestParsedSections: null,
         updatedAt: new Date(),
       },
     }
@@ -389,6 +470,8 @@ export async function setSourceReady(
         status: "ready",
         error: null,
         summary,
+        ingestStage: null,
+        ingestParsedSections: null,
         updatedAt: new Date(),
       },
     }
@@ -437,6 +520,8 @@ export async function retrySourceIngest(
       $set: {
         status: "pending",
         error: null,
+        ingestStage: "queued",
+        ingestParsedSections: null,
         updatedAt: now,
       },
     }

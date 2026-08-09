@@ -1,6 +1,7 @@
 export { getChunksCollection, type ChunkDocument } from "@/server/sources/chunks"
 export { getSourcesCollection } from "@/server/sources/collection"
 export {
+  clearIngestWorkingState,
   createFileSource,
   createWebSource,
   createYoutubeSource,
@@ -9,6 +10,8 @@ export {
   listEnabledReadySourceIds,
   listSources,
   retrySourceIngest,
+  saveIngestExtractedContent,
+  setIngestStage,
   setSourceReady,
   setSourceStatus,
   type SourceDto,

@@ -1,6 +1,16 @@
-import { runSourceIngest } from "@/server/ingest/pipeline"
+import {
+  chunkSourceContent,
+  embedSourceContent,
+  extractSourceContent,
+  finalizeSourceIngest,
+  summarizeSourceContent,
+} from "@/server/ingest/pipeline"
 import { inngest } from "@/server/inngest/client"
-import { getSourceById, setSourceStatus } from "@/server/sources/service"
+import {
+  getSourceById,
+  setIngestStage,
+  setSourceStatus,
+} from "@/server/sources/service"
 
 export const ingestSource = inngest.createFunction(
   {
@@ -18,6 +28,7 @@ export const ingestSource = inngest.createFunction(
 
     await step.run("mark-processing", async () => {
       await setSourceStatus(sourceId, "processing")
+      await setIngestStage(sourceId, "queued")
     })
 
     const exists = await step.run("load-source", async () => {
@@ -34,31 +45,95 @@ export const ingestSource = inngest.createFunction(
       return { sourceId, status: "failed" }
     }
 
-    const ingested = await step.run("extract-chunk-embed", async () => {
+    const extracted = await step.run("extract", async () => {
       try {
-        const result = await runSourceIngest(sourceId)
-        return { ok: true as const, ...result }
+        const result = await extractSourceContent(sourceId)
+        return { ok: true as const, text: result.text }
       } catch (error) {
         return {
           ok: false as const,
           error:
-            error instanceof Error ? error.message : "Source ingest failed",
+            error instanceof Error ? error.message : "Source extract failed",
         }
       }
     })
 
-    if (!ingested.ok) {
-      await step.run("mark-failed", async () => {
-        await setSourceStatus(sourceId, "failed", ingested.error)
+    if (!extracted.ok) {
+      await step.run("mark-failed-extract", async () => {
+        await setSourceStatus(sourceId, "failed", extracted.error)
       })
-      return { sourceId, status: "failed", error: ingested.error }
+      return { sourceId, status: "failed", error: extracted.error }
     }
+
+    const chunked = await step.run("chunk", async () => {
+      try {
+        const chunks = await chunkSourceContent(sourceId)
+        return { ok: true as const, chunkCount: chunks.length }
+      } catch (error) {
+        return {
+          ok: false as const,
+          error:
+            error instanceof Error ? error.message : "Source chunking failed",
+        }
+      }
+    })
+
+    if (!chunked.ok) {
+      await step.run("mark-failed-chunk", async () => {
+        await setSourceStatus(sourceId, "failed", chunked.error)
+      })
+      return { sourceId, status: "failed", error: chunked.error }
+    }
+
+    const embedded = await step.run("embed", async () => {
+      try {
+        const result = await embedSourceContent(sourceId)
+        return { ok: true as const, chunkCount: result.chunkCount }
+      } catch (error) {
+        return {
+          ok: false as const,
+          error:
+            error instanceof Error ? error.message : "Source embedding failed",
+        }
+      }
+    })
+
+    if (!embedded.ok) {
+      await step.run("mark-failed-embed", async () => {
+        await setSourceStatus(sourceId, "failed", embedded.error)
+      })
+      return { sourceId, status: "failed", error: embedded.error }
+    }
+
+    const summarized = await step.run("summarize", async () => {
+      try {
+        const summary = await summarizeSourceContent(sourceId, extracted.text)
+        return { ok: true as const, summary }
+      } catch (error) {
+        return {
+          ok: false as const,
+          error:
+            error instanceof Error ? error.message : "Source summary failed",
+        }
+      }
+    })
+
+    if (!summarized.ok) {
+      await step.run("mark-failed-summarize", async () => {
+        await setSourceStatus(sourceId, "failed", summarized.error)
+      })
+      return { sourceId, status: "failed", error: summarized.error }
+    }
+
+    await step.run("finalize", async () => {
+      await finalizeSourceIngest(sourceId, summarized.summary)
+    })
 
     return {
       sourceId,
       status: "ready",
-      sourceType: ingested.sourceType,
-      chunkCount: ingested.chunkCount,
+      sourceType: exists.type,
+      chunkCount: embedded.chunkCount,
     }
   }
 )
